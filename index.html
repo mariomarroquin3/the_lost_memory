@@ -3,31 +3,51 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>The Lost Memory</title>
+    <title>The Lost Memory // Genesis 2097</title>
   </head>
   <body>
     <main class="game-shell">
       <header class="topbar">
-        <div class="brand">THE LOST MEMORY</div>
-        <p>Flechas o WASD: mover · E: mirar o usar · M: música · F: pantalla completa</p>
-        <div class="topbar__actions"><button type="button" id="map-button">Mapa (Tab)</button><button type="button" id="control-button">PC de control</button><button type="button">Pantalla completa (F)</button></div>
+        <div class="brand">THE LOST MEMORY <span class="brand-sub">GENESIS 2097</span></div>
+        <p class="topbar-hints">Flechas / WASD: mover · E: usar terminal · Tab: mapa · M: audio · F: fullscreen</p>
+        <div class="topbar__actions">
+          <button type="button" id="map-button" class="btn-top">Mapa (Tab)</button>
+          <button type="button" id="control-button" class="btn-top">PC de Control</button>
+          <button type="button" id="music-button" class="btn-top">Música: no (M)</button>
+          <button type="button" id="fullscreen-button" class="btn-top">Pantalla completa (F)</button>
+        </div>
       </header>
-      <canvas id="game" width="640" height="360" aria-label="The Lost Memory"></canvas>
-      <div id="room-banner" class="room-banner" aria-live="polite"></div>
-      <aside id="hud" class="hud" aria-live="polite"></aside>
-      <div id="overlay" class="overlay" hidden></div>
+
+      <div class="canvas-container">
+        <canvas id="game" width="640" height="360" aria-label="The Lost Memory"></canvas>
+        <div id="room-banner" class="room-banner" aria-live="polite"></div>
+        <aside id="hud" class="hud" aria-live="polite"></aside>
+        <div id="overlay" class="overlay" hidden></div>
+      </div>
+
       <section class="progress-panel">
         <div class="phrase-map">
-          <span class="phrase-map__title">MEMORIA RECUPERADA</span>
+          <span class="phrase-map__title">MAPA DE RED LOCAL // GENESIS</span>
           <div class="fragment-grid" id="fragment-grid"></div>
         </div>
         <div class="progress-copy">
-          <p id="fragment-count">Fragmentos · 0 de 10</p>
-          <div class="fragment-words" id="fragment-words"><span>IDENTIDAD</span><span>VERDAD</span><span>APRENDIZAJE</span><span>PERCEPCIÓN</span><span>MEMORIA</span></div>
-          <p class="collectibles">Coleccionables · 0 de 10</p>
+          <div class="progress-header">
+            <p id="fragment-count">Memoria de IA · 0 de 10 fragmentos</p>
+            <span class="protocol-status">PROTOCOLO DE ENTROPÍA: ACTIVO</span>
+          </div>
+          <div class="fragment-words" id="fragment-words"></div>
         </div>
       </section>
-      <div class="touch-controls" aria-label="Controles táctiles"><button type="button" data-key="arrowup">▲</button><div><button type="button" data-key="arrowleft">◀</button><button type="button" data-action="interact">E</button><button type="button" data-key="arrowright">▶</button></div><button type="button" data-key="arrowdown">▼</button></div>
+
+      <div class="touch-controls" aria-label="Controles táctiles">
+        <button type="button" data-key="arrowup">▲</button>
+        <div>
+          <button type="button" data-key="arrowleft">◀</button>
+          <button type="button" data-action="interact">E</button>
+          <button type="button" data-key="arrowright">▶</button>
+        </div>
+        <button type="button" data-key="arrowdown">▼</button>
+      </div>
     </main>
     <script type="module" src="/src/main.ts"></script>
   </body>

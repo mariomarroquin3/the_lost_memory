@@ -26,4 +26,5 @@ export interface Player {
 export interface CanvasGameEvents {
   onRoomChanged?: (roomId: number) => void;
   onInteract?: () => void;
+  isRoomSolved?: (roomId: number) => boolean;
 }
