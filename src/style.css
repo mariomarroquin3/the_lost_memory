@@ -1,19 +1,25 @@
 @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
 :root {
-  --bg-dark: #0e0b13;
-  --bg-deep: #07050a;
+  --bg-page: #0e0b13;
+  --bg-world: #0b0910;
+  --bg-box: #17121e;
+  --bg-btn: #231b2c;
+  --bg-btn-hover: #2e2439;
+  --border-ui: #43374f;
+  --border-screen: #2c2436;
   --text-main: #ece3d6;
-  --text-muted: #9d93a9;
+  --text-dim: #9d93a9;
   --color-orange: #f7931a;
-  --color-orange-dark: #c46a0c;
-  --color-cyan: #00e5ff;
+  --color-orange-shadow: #c46a0c;
+  --color-gold: #e0b23c;
+  --color-gold-shine: #ffd978;
   --color-green: #4cc47a;
   --color-green-dark: #2f8a4c;
-  --color-red: #ff1744;
-  --border-ui: #43374f;
-  --btn-bg: #231b2c;
-  --btn-hover: #2e2439;
+  --color-green-text: #8fe0a8;
+  --color-green-bright: #7ef59b;
+  --color-red: #e05252;
+  --color-red-text: #ff8a7a;
   font-family: 'Press Start 2P', monospace;
 }
 
@@ -26,139 +32,145 @@ body {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  background: radial-gradient(ellipse at 50% 0%, #22162e 0%, #0b0812 65%, #050408 100%);
+  background: var(--bg-page);
   color: var(--text-main);
   user-select: none;
+  overflow-x: hidden;
 }
 
 .game-shell {
-  position: relative;
-  width: min(1080px, 96vw);
-  padding: 12px 0 18px;
+  width: min(960px, 96vw);
+  margin: 12px auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-/* TOPBAR ESTILO RETRO-SCI-FI */
+/* ==========================================================================
+   1. TOPBAR ESTILO PROYECTO 21 (IMAGEN 1)
+   ========================================================================== */
 .topbar {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 14px;
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   min-height: 48px;
-  margin-bottom: 8px;
 }
 
 .brand {
   color: var(--color-orange);
   font-size: 13px;
   letter-spacing: -0.5px;
-  text-shadow: 2px 2px #40220b, 0 0 10px rgba(247, 147, 26, 0.4);
+  text-shadow: 2px 2px #40220b;
+  white-space: nowrap;
 }
 
-.brand-sub {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 2px 6px;
-  font-size: 9px;
-  color: #0b0910;
-  background: var(--color-cyan);
-  border-radius: 2px;
-  letter-spacing: 0;
-  text-shadow: none;
+.brand-colon {
+  color: var(--text-dim);
 }
 
-.topbar-hints {
+.topbar-controls {
   margin: 0;
-  color: #c9bfd6;
+  color: var(--text-main);
   font-size: 9px;
-  line-height: 1.5;
+  line-height: 1.6;
+  flex: 1;
 }
 
 .topbar__actions {
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
-/* BOTONES RETRO CON BISEL 3D PIXEL */
-.btn-top, .btn-retro {
+/* BOTONES SUPERIORES CON 2 LÍNEAS DE TEXTO */
+.btn-topbar {
   border: 2px solid var(--border-ui);
-  padding: 7px 10px;
+  padding: 6px 12px;
   color: var(--text-main);
-  background: var(--btn-bg);
+  background: var(--bg-btn);
   cursor: pointer;
   font: inherit;
   font-size: 9px;
+  line-height: 1.3;
+  text-align: center;
   box-shadow: 0 3px 0 #08060b;
   transition: all 0.1s ease;
+  white-space: nowrap;
 }
 
-.btn-top:hover, .btn-retro:hover {
+.btn-topbar:hover {
   border-color: var(--color-orange);
-  background: var(--btn-hover);
+  background: var(--bg-btn-hover);
 }
 
-.btn-top:active, .btn-retro:active {
+.btn-topbar:active {
   transform: translateY(2px);
   box-shadow: 0 1px 0 #08060b;
 }
 
-/* CONTENEDOR DEL CANVAS Y PANTALLA CRT */
-.canvas-container {
+/* ==========================================================================
+   2. PANTALLA DEL JUEGO (.screen-frame CON ASPECT RATIO 5:3)
+   ========================================================================== */
+.screen-frame {
   position: relative;
   width: 100%;
+  aspect-ratio: 5 / 3;
+  background: var(--bg-world);
+  border: 4px solid var(--border-screen);
+  border-radius: 6px;
+  box-shadow: 0 0 0 4px #000, 0 18px 48px rgba(0, 0, 0, 0.6), 0 0 80px rgba(247, 147, 26, 0.06);
+  overflow: hidden;
 }
 
 #game {
   display: block;
   width: 100%;
-  height: auto;
-  border: 4px solid #2c2436;
-  border-radius: 6px;
-  box-shadow: 0 0 0 4px #000, 0 18px 48px rgba(0, 0, 0, 0.7), 0 0 80px rgba(0, 229, 255, 0.08);
+  height: 100%;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
-  background: #09070d;
 }
 
-/* BANNER DE ENTRADA A SALAS */
+/* BANNER DE SALA CENTRADO ARRIBA */
 .room-banner {
   position: absolute;
-  top: 16px;
+  top: 14px;
   left: 50%;
   z-index: 3;
-  padding: 10px 18px;
+  padding: 8px 16px;
   color: var(--color-orange);
   background: rgba(14, 11, 19, 0.94);
   border: 2px solid var(--color-orange);
-  box-shadow: 0 0 15px rgba(247, 147, 26, 0.35);
-  font-size: 11px;
   text-shadow: 2px 2px #000;
+  font-size: 10px;
   transform: translate(-50%, -20px);
   opacity: 0;
   pointer-events: none;
 }
 
 .room-banner--on {
-  animation: room-banner 2.6s ease-out both;
+  animation: room-banner 2.5s ease-out both;
 }
 
-/* HUD ESQUINA SUPERIOR DERECHA (SALVAR A LA HUMANIDAD) */
+/* HUD SUTIL EN LA ESQUINA SUPERIOR DERECHA */
 .hud {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  width: min(290px, 32%);
-  padding: 12px;
-  border: 2px solid var(--color-cyan);
-  background: rgba(14, 11, 19, 0.94);
-  box-shadow: 0 0 0 3px #000, 0 0 20px rgba(0, 229, 255, 0.2);
-  font-size: 9px;
+  top: 12px;
+  right: 12px;
   z-index: 2;
-  backdrop-filter: blur(4px);
+  pointer-events: none;
 }
 
-.hud--critical {
+.hud__box {
+  padding: 10px 14px;
+  background: rgba(14, 11, 19, 0.90);
+  border: 2px solid var(--border-ui);
+  box-shadow: 0 0 0 2px #000;
+  font-size: 8px;
+  width: 210px;
+}
+
+.hud--critical .hud__box {
   border-color: var(--color-red);
-  box-shadow: 0 0 0 3px #000, 0 0 24px rgba(255, 23, 68, 0.4);
   animation: hud-glitch 1.4s steps(2, end) infinite;
 }
 
@@ -166,395 +178,463 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 
 .hud__title {
   color: var(--color-orange);
   font-weight: bold;
-  font-size: 10px;
-  text-shadow: 1px 1px #000;
 }
 
-.hud__sync-badge {
-  font-size: 8px;
-  padding: 2px 4px;
-  color: #0b0910;
-  background: var(--color-cyan);
-  border-radius: 2px;
+.hud__sync {
+  font-size: 7px;
+  padding: 1px 4px;
+  background: var(--border-ui);
+  color: var(--text-main);
 }
 
-.hud__sync-badge--crit {
+.hud__sync--crit {
   background: var(--color-red);
   color: #fff;
-  animation: blink 0.8s infinite;
 }
 
 .hud__room {
-  margin-bottom: 8px;
-  color: var(--color-green);
-  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+  color: var(--color-green-text);
 }
 
 .hud__row {
   display: flex;
   justify-content: space-between;
-  margin-top: 6px;
-  color: var(--text-muted);
-}
-
-.hud__alert strong {
-  color: var(--color-red);
+  margin-top: 4px;
+  color: var(--text-dim);
 }
 
 .hud__meter {
-  height: 6px;
-  margin-top: 4px;
+  height: 5px;
+  margin-top: 3px;
+  background: #100b17;
   border: 1px solid var(--border-ui);
-  background: #14101d;
 }
 
 .hud__meter i {
   display: block;
   height: 100%;
-  transition: width 0.3s ease;
 }
 
-.hud__ticker {
-  margin-top: 8px;
-  padding-top: 6px;
-  border-top: 1px dashed var(--border-ui);
+/* ==========================================================================
+   3. PANEL INFERIOR DE PROGRESO (EXACTO A IMAGEN 1)
+   ========================================================================== */
+.progress-panel {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 16px;
+  padding: 12px 14px;
+  background: #100c16;
+  border: 3px solid var(--border-screen);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.3);
+}
+
+/* MINIMAPA A LA IZQUIERDA */
+.minimap-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.minimap-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  width: 134px;
+}
+
+.minimap-cell {
+  display: grid;
+  place-items: center;
+  height: 26px;
+  background: var(--bg-btn);
+  border: 1px solid var(--border-ui);
+  color: var(--text-dim);
   font-size: 8px;
-  color: #ffd978;
-  line-height: 1.4;
-  min-height: 2.2em;
 }
 
-/* OVERLAY MODAL Y SCANLINES CRT */
+.minimap-cell--current {
+  background: var(--color-orange) !important;
+  border-color: var(--color-orange) !important;
+  color: #000 !important;
+  font-weight: bold;
+}
+
+.minimap-cell--found {
+  background: #20372a;
+  border-color: var(--color-green-dark);
+  color: var(--color-green-text);
+}
+
+/* CASILLAS DE FRAGMENTOS AL CENTRO / DERECHA */
+.fragments-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fragments-header {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.fragment-slots {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 5px;
+}
+
+.slot-box {
+  display: grid;
+  place-items: center;
+  height: 26px;
+  padding: 0 4px;
+  font-size: 8px;
+  text-align: center;
+}
+
+.slot-box--found {
+  border: 1px solid var(--color-green);
+  background: #14281c;
+  color: var(--color-green-bright);
+}
+
+.slot-box--empty {
+  border: 1px dashed var(--border-ui);
+  background: #15111d;
+  color: #4b3d5c;
+}
+
+.slot-word {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fragments-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2px;
+}
+
+.collectibles-label {
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.btn-reset {
+  background: transparent;
+  border: 1px solid #5e3037;
+  color: var(--color-red);
+  font: inherit;
+  font-size: 8px;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.btn-reset:hover {
+  background: var(--color-red);
+  color: #000;
+}
+
+/* ==========================================================================
+   4. MODALES OVERLAY
+   ========================================================================== */
 .overlay {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 4%;
-  background: rgba(4, 3, 7, 0.78);
+  padding: 2%;
+  background: rgba(0, 0, 0, 0.65);
   z-index: 10;
-  backdrop-filter: blur(2px);
 }
 
 .overlay[hidden] {
   display: none;
 }
 
-/* ESTILO CRT TERMINAL VERDE FÓSFORO (SCREENSHOT 2) */
-.crt-panel {
-  position: relative;
-  width: min(820px, 96%);
+/* ==========================================================================
+   5. PC DE CONTROL ESTILO IMAGEN 3
+   ========================================================================== */
+.pc-control-modal {
+  width: min(720px, 96%);
   max-height: 94%;
   overflow-y: auto;
-  padding: 24px;
-  border: 3px solid var(--color-green-dark);
-  background: rgba(3, 12, 7, 0.97);
-  box-shadow: 0 0 0 4px #000, 0 0 35px rgba(76, 196, 122, 0.28);
-  color: #b8f5c8;
+  padding: 22px 24px;
+  background: rgb(4 14 8 / 96%);
+  border: 3px double var(--color-green-dark);
+  box-shadow: 0 0 30px rgba(76, 196, 122, 0.25);
+  color: var(--color-green-text);
+  font-size: 10px;
 }
 
-.crt-panel::before {
-  content: " ";
-  display: block;
-  position: absolute;
-  top: 0; left: 0; bottom: 0; right: 0;
-  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
-  background-size: 100% 4px;
-  z-index: 2;
-  pointer-events: none;
-  opacity: 0.7;
+.pc-title {
+  margin: 0 0 14px;
+  color: var(--color-green);
+  font-size: 12px;
+  letter-spacing: 0.5px;
 }
 
-.control-overlay__head, .map-overlay__head {
+.pc-postit {
+  background: #f3dc6a;
+  color: #1a1608;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+  border-radius: 2px;
+  font-size: 9px;
+  line-height: 1.5;
+  box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.4);
+}
+
+.pc-postit strong {
+  color: #000;
+}
+
+.pc-recording {
+  color: var(--text-main);
+  line-height: 1.6;
+  margin-bottom: 18px;
+  font-size: 9px;
+}
+
+.pc-diag-table {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-bottom: 20px;
+  font-size: 9px;
+}
+
+.pc-diag-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 16px;
-  border-bottom: 2px solid var(--color-green-dark);
-  padding-bottom: 12px;
 }
 
-.control-overlay h2 {
-  margin: 0 0 6px;
-  color: var(--color-green);
-  font-size: 14px;
-  text-shadow: 0 0 8px rgba(76, 196, 122, 0.6);
+.pc-val-green {
+  color: var(--color-green-bright);
 }
 
-.control-sector {
-  font-size: 9px;
+.pc-val-dim {
   color: #65b87e;
 }
 
-/* POST-IT NOTE AMARILLO PEGADO AL MONITOR (SCREENSHOT 2) */
-.post-it-note {
-  position: relative;
-  background: #f3dc6a;
-  color: #1a1608;
-  padding: 12px 16px;
-  margin: 12px 0 16px;
-  transform: rotate(-0.8deg);
-  box-shadow: 2px 4px 10px rgba(0, 0, 0, 0.55);
-  font-size: 10px;
-  line-height: 1.6;
-}
-
-.post-it-tape {
-  position: absolute;
-  top: -8px;
-  left: 35%;
-  width: 50px;
-  height: 14px;
-  background: rgba(255, 255, 255, 0.45);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
-  transform: rotate(2deg);
-}
-
-.post-it-text strong {
-  color: #8c6a0c;
-  font-size: 9px;
-}
-
-.control-log {
-  padding: 12px;
-  border: 1px dashed var(--color-green-dark);
-  color: #8fe0a8;
-  background: #020804;
-  font-size: 10px;
-  line-height: 1.6;
-  margin-bottom: 14px;
-}
-
-.log-label {
-  display: block;
-  color: #f7931a;
-  margin-bottom: 4px;
-  font-weight: bold;
-}
-
-/* TABLA DE DIAGNÓSTICO ESTILO SCREENSHOT 2 */
-.control-status-table {
-  display: grid;
-  gap: 6px;
-  background: #020904;
-  border: 1px solid var(--color-green-dark);
-  padding: 12px;
+.pc-input-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 16px;
-  font-size: 10px;
 }
 
-.status-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 4px 0;
-  border-bottom: 1px dotted rgba(76, 196, 122, 0.2);
-}
-
-.status-row:last-child {
-  border-bottom: none;
-}
-
-/* COMANDO DE TERMINAL */
-.control-command-box {
-  margin: 14px 0;
-  padding: 12px;
-  background: #041007;
-  border: 1px solid var(--color-green-dark);
-}
-
-.control-command-box label {
-  display: block;
-  font-size: 9px;
+.pc-input-label {
   color: var(--color-green);
-  margin-bottom: 8px;
+  white-space: nowrap;
 }
 
-.cmd-row {
-  display: flex;
-  gap: 8px;
-}
-
-.cmd-input {
+.pc-input-wrapper {
   flex: 1;
-  background: #010602;
+}
+
+.pc-input-field {
+  width: 100%;
+  padding: 8px 10px;
+  background: #020804;
   border: 2px solid var(--color-orange);
-  color: #b8f5c8;
-  padding: 8px 12px;
+  color: var(--color-green-bright);
   font: inherit;
   font-size: 10px;
   outline: none;
 }
 
-.cmd-input:focus {
-  box-shadow: 0 0 10px rgba(247, 147, 26, 0.5);
+.pc-input-field:focus {
+  box-shadow: 0 0 8px rgba(247, 147, 26, 0.6);
 }
 
-.btn-terminal {
-  border: 2px solid var(--color-orange);
-  background: #231b2c;
-  color: var(--color-orange);
+.pc-btn-submit {
+  border: 2px solid var(--color-green-dark);
+  background: #081c0e;
+  color: var(--color-green-bright);
   padding: 8px 14px;
   font: inherit;
-  font-size: 10px;
+  font-size: 9px;
   cursor: pointer;
 }
 
-.btn-terminal:hover {
+.pc-btn-submit:hover {
+  background: var(--color-green-dark);
+  color: #000;
+}
+
+.pc-status-msg {
+  min-height: 1.5em;
+  color: var(--color-green-bright);
+  margin: 0 0 16px;
+  font-size: 9px;
+}
+
+.pc-footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.btn-green-outline {
+  border: 2px solid var(--color-green-dark);
+  background: transparent;
+  color: var(--color-green-text);
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.btn-green-outline:hover {
+  background: var(--color-green-dark);
+  color: #000;
+}
+
+/* ==========================================================================
+   6. MAPA DEL LABORATORIO ESTILO IMAGEN 2
+   ========================================================================== */
+.map-modal {
+  width: min(760px, 96%);
+  max-height: 94%;
+  overflow-y: auto;
+  padding: 22px 24px;
+  background: rgb(14 11 19 / 98%);
+  border: 3px solid var(--color-orange);
+  box-shadow: 0 0 30px rgba(247, 147, 26, 0.2);
+}
+
+.map-modal__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.map-modal__head h2 {
+  margin: 0;
+  color: var(--color-orange);
+  font-size: 12px;
+}
+
+.btn-orange-outline {
+  border: 2px solid var(--color-orange);
+  background: transparent;
+  color: var(--color-orange);
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.btn-orange-outline:hover {
   background: var(--color-orange);
   color: #000;
 }
 
-.cmd-output {
-  margin: 8px 0 0;
-  font-size: 9px;
-  color: #7ef59b;
-  min-height: 1.5em;
-}
-
-.control-fragments-list {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 6px;
-  padding-left: 20px;
-  font-size: 9px;
-  color: #4b6652;
-}
-
-.control-fragments-list li.is-found {
-  color: #7ef59b;
-  font-weight: bold;
-}
-
-/* MAPA DE RED GENESIS (SCREENSHOT 3) */
-.map-overlay {
-  width: min(840px, 96%);
-  max-height: 94%;
-  overflow-y: auto;
-  padding: 24px;
-  border: 3px solid var(--color-orange);
-  background: rgba(14, 11, 19, 0.98);
-  box-shadow: 0 0 0 4px #000, 0 0 40px rgba(247, 147, 26, 0.25);
-}
-
-.map-overlay h2 {
-  margin: 0 0 4px;
-  color: var(--color-orange);
-  font-size: 14px;
-  text-shadow: 2px 2px #000;
-}
-
-.map-overlay__sub {
-  margin: 0;
-  font-size: 9px;
-  color: var(--text-muted);
-}
-
-.map-grid {
+.map-grid-5 {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-  margin: 18px 0;
+  gap: 12px 10px;
+  margin-bottom: 20px;
 }
 
-.map-room {
+.map-cell-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.map-box {
+  width: 100%;
+  min-height: 72px;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  min-height: 86px;
-  padding: 10px;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  background: var(--bg-box);
   border: 2px solid var(--border-ui);
-  background: #15111d;
-  color: var(--text-muted);
-  font-size: 8px;
-  transition: all 0.2s;
+  color: var(--text-dim);
+  text-align: center;
 }
 
-.map-room__header {
-  display: flex;
-  justify-content: space-between;
+.map-box__num {
+  font-size: 11px;
 }
 
-.map-room__num {
-  font-size: 12px;
-  font-weight: bold;
+.map-box__name {
+  font-size: 7px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90%;
+  white-space: nowrap;
+}
+
+.map-box--current {
+  border-color: var(--color-orange);
+  background: #3a2612;
   color: var(--color-orange);
 }
 
-.map-room__badge {
-  font-size: 7px;
-  padding: 1px 3px;
-  border: 1px solid var(--border-ui);
+.map-box--current .map-box__num {
+  color: var(--color-orange);
 }
 
-.map-room__name {
-  color: #ece3d6;
-  font-size: 9px;
-  margin: 4px 0;
-  line-height: 1.3;
+.map-box--found {
+  border-color: #3f7a48;
+  background: #20372a;
+  color: var(--color-green-text);
 }
 
-.map-room__fragment {
-  color: #65577a;
-  font-size: 7px;
+.map-box--found .map-box__num {
+  color: var(--color-green-bright);
 }
 
-.map-room--current {
-  border-color: var(--color-orange);
-  background: #3a2612;
-  box-shadow: 0 0 12px rgba(247, 147, 26, 0.4);
-}
-
-.map-room--found {
-  border-color: var(--color-green);
-  background: #14281c;
-}
-
-.map-room--found .map-room__fragment {
-  color: #8fe0a8;
-}
-
-.map-legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 14px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border-ui);
-  font-size: 9px;
-  color: var(--text-muted);
-}
-
-.legend-item {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
+.map-connector {
+  position: absolute;
+  right: -7px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
+  z-index: 2;
 }
 
-.dot--orange { background: var(--color-orange); }
-.dot--green { background: var(--color-green); }
-.dot--red { background: var(--color-red); }
+.map-connector--locked {
+  background: var(--color-red);
+}
 
-/* PUZZLES Y RETOS */
+.map-connector--open {
+  background: var(--color-green);
+}
+
+.map-legend-p21 {
+  margin: 0;
+  font-size: 8px;
+  color: var(--text-main);
+  line-height: 1.7;
+}
+
+/* ==========================================================================
+   7. PANELES DE RETOS / PUZZLES
+   ========================================================================== */
 .puzzle {
   width: min(640px, 96%);
   max-height: 90%;
   overflow-y: auto;
   padding: 22px;
   border: 3px solid var(--color-orange);
-  background: #0e0b13;
+  background: rgb(14 11 19 / 97%);
   box-shadow: 0 0 0 4px #000, 0 0 35px rgba(247, 147, 26, 0.2);
 }
 
@@ -570,7 +650,7 @@ body {
 .puzzle h2 {
   margin: 0;
   color: var(--color-orange);
-  font-size: 14px;
+  font-size: 11px;
 }
 
 .records {
@@ -582,7 +662,7 @@ body {
 .record {
   text-align: left;
   padding: 10px;
-  font-size: 9px;
+  font-size: 8px;
   line-height: 1.5;
   background: #1a1424;
   border: 1px solid var(--border-ui);
@@ -591,127 +671,78 @@ body {
 }
 
 .record:hover {
-  border-color: var(--color-cyan);
+  border-color: var(--color-orange);
   background: #251d33;
 }
 
 .puzzle__message {
   min-height: 2.2em;
-  color: var(--color-green);
-  font-size: 10px;
+  color: var(--color-green-bright);
+  font-size: 9px;
   line-height: 1.5;
 }
 
-/* BARRA INFERIOR DE PROGRESO (SCREENSHOT 1) */
-.progress-panel {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 16px;
-  margin-top: 10px;
-  padding: 12px;
-  border: 3px solid #2c2436;
-  background: #100c17;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-}
-
-.phrase-map {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.phrase-map__title {
-  font-size: 8px;
-  color: var(--color-orange);
-  letter-spacing: 0.5px;
-}
-
-.fragment-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 4px;
-}
-
-.minimap-cell {
-  display: grid;
-  place-items: center;
-  height: 24px;
-  border: 1px solid var(--border-ui);
-  background: #191322;
-  color: #65577a;
+.btn-retro {
+  border: 2px solid var(--border-ui);
+  padding: 6px 10px;
+  color: var(--text-main);
+  background: var(--bg-btn);
+  cursor: pointer;
+  font: inherit;
   font-size: 8px;
 }
 
-.minimap-cell--current {
+.btn-retro:hover {
   border-color: var(--color-orange);
+}
+
+.late-room__select, .cmd-input {
+  width: 100%;
+  padding: 8px;
+  background: #0b0910;
+  border: 2px solid var(--border-ui);
+  color: var(--text-main);
+  font: inherit;
+  font-size: 9px;
+}
+
+.btn-terminal {
+  border: 2px solid var(--color-orange);
+  background: var(--bg-btn);
+  color: var(--color-orange);
+  padding: 8px 14px;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+.btn-terminal:hover {
   background: var(--color-orange);
   color: #000;
-  font-weight: bold;
 }
 
-.minimap-cell--found {
-  border-color: var(--color-green);
-  background: #1b3624;
-  color: #8fe0a8;
-}
-
-.progress-copy {
-  display: flex;
-  flex-direction: column;
+.prompt-choices {
+  display: grid;
   gap: 8px;
+  margin: 14px 0;
 }
 
-.progress-header {
+.prompt-choice-label {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-}
-
-#fragment-count {
-  margin: 0;
-  font-size: 10px;
-  color: var(--text-main);
-}
-
-.protocol-status {
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border-ui);
   font-size: 8px;
-  color: var(--color-red);
+  cursor: pointer;
 }
 
-.fragment-words {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.frag-tag {
-  padding: 5px 8px;
-  font-size: 8px;
-  border: 1px solid var(--border-ui);
-  background: #15111d;
-  color: #5d516d;
-}
-
-.frag-tag--found {
+.prompt-choice-label:has(input:checked) {
   border-color: var(--color-green);
-  background: #12281a;
-  color: #8fe0a8;
-  box-shadow: 0 0 6px rgba(76, 196, 122, 0.3);
+  background: rgba(76, 196, 122, 0.12);
+  color: var(--color-green-bright);
 }
-
-.reset-button {
-  align-self: flex-start;
-  margin-top: 4px;
-  color: #ff8a7a;
-  border-color: #6e2732;
-  font-size: 8px;
-}
-
-/* COLORES DE APOYO */
-.text-green { color: var(--color-green); }
-.text-cyan { color: var(--color-cyan); }
-.text-orange { color: var(--color-orange); }
-.text-red { color: var(--color-red); }
 
 /* CONTROLES TÁCTILES */
 .touch-controls {
@@ -730,18 +761,12 @@ body {
   91% { transform: translate(2px, -1px); }
 }
 
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
 @media (max-width: 900px) {
-  .topbar { grid-template-columns: 1fr; gap: 8px; }
-  .topbar__actions { overflow-x: auto; }
-  .hud { width: 220px; font-size: 8px; }
+  .topbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .topbar__actions { width: 100%; overflow-x: auto; }
   .progress-panel { grid-template-columns: 1fr; }
-  .map-grid { grid-template-columns: repeat(2, 1fr); }
-  .control-fragments-list { grid-template-columns: 1fr; }
+  .map-grid-5 { grid-template-columns: repeat(2, 1fr); }
+  .fragment-slots { grid-template-columns: repeat(2, 1fr); }
   .touch-controls { display: grid; justify-items: center; gap: 4px; margin: 10px auto 0; }
   .touch-controls > div { display: flex; gap: 4px; }
   .touch-controls button { width: 44px; height: 38px; font-size: 12px; }

@@ -1,112 +1,94 @@
 import type { GameState } from '../gameState';
-import { ROOM_NAMES } from '../rooms/roomNames';
 
 export function openControlPanel(state: GameState, host: HTMLElement, onClose: () => void): void {
   host.hidden = false;
 
-  const currentSector = ROOM_NAMES[state.currentRoom - 1] ?? 'Seguridad';
-  const memoryPercent = Math.round((state.fragments.length / 10) * 100);
-
-  const fragmentRows = Array.from({ length: 10 }, (_, index) => {
-    const num = String(index + 1).padStart(2, '0');
-    const name = state.fragments[index];
-    return `<li class="${name ? 'is-found' : ''}">#${num} ${name ? `[RECUPERADO: ${name}]` : 'DATOS CORRUPTOS // PROTOCOLO DE ENTROPÍA'}</li>`;
-  }).join('');
+  const currentWordNum = String(state.currentRoom).padStart(2, '0');
 
   host.innerHTML = `
-    <section class="control-overlay crt-panel" role="dialog" aria-modal="true" aria-labelledby="control-title">
-      <div class="control-overlay__head">
-        <div>
-          <h2 id="control-title">PC DE CONTROL // ESTADO DE LA RED GENESIS</h2>
-          <span class="control-sector">TERMINAL LOCAL: SECTOR #${String(state.currentRoom).padStart(2, '0')} · ${currentSector.toUpperCase()}</span>
-        </div>
-        <button type="button" class="btn-retro" data-control-close>Cerrar (Esc)</button>
+    <section class="pc-control-modal" role="dialog" aria-modal="true" aria-labelledby="control-title">
+      <h2 id="control-title" class="pc-title">PC DE CONTROL · ESTADO DE LA BÓVEDA</h2>
+
+      <!-- Post-it pegado al monitor (Exacto a Imagen 3) -->
+      <div class="pc-postit">
+        Post-it pegado al monitor: <strong>"#04 hqhujb"</strong>.
       </div>
 
-      <!-- Post-it adhesivo amarillo realista (Estilo Screenshot 2) -->
-      <div class="post-it-note">
-        <div class="post-it-tape"></div>
-        <div class="post-it-text">
-          <strong>POST-IT PEGADO AL MONITOR:</strong><br>
-          «#04 hqhujb // Kiro: Lía fragmentó el contexto en 10 sectores para evitar que El Alucinador tome la infraestructura mundial. No permitas que el Protocolo alcance el 100%.»
-        </div>
+      <!-- Grabación / Log -->
+      <div class="pc-recording">
+        GRABACIÓN 1 · 2097 · "Llegamos a Genesis para entender la red global de IA, no para destruirla. Aquí desarmamos cada modelo hasta saber cómo funcionaba."
       </div>
 
-      <div class="control-log">
-        <span class="log-label">GRABACIÓN 1 · 2097 · NÚCLEO DE GENESIS:</span>
-        <p>«Llegamos a Genesis para coordinar la red global de IA, no para destruirla. Si la memoria de Lía no se reconstruye, el colapso de hospitales y redes eléctricas será irreversible.»</p>
-      </div>
-
-      <div class="control-status-table">
-        <div class="status-row">
-          <span>Energía de emergencia</span>
-          <strong class="text-green">EN LÍNEA</strong>
+      <!-- Tabla de diagnóstico con valores alineados a la derecha -->
+      <div class="pc-diag-table">
+        <div class="pc-diag-row">
+          <span class="pc-diag-label">Energía de emergencia</span>
+          <span class="pc-diag-val pc-val-green">EN LÍNEA</span>
         </div>
-        <div class="status-row">
-          <span>Red eléctrica global</span>
-          <strong class="${state.globalSyncPercent > 50 ? 'text-red' : 'text-orange'}">
-            ${state.globalSyncPercent}% · ${state.globalSyncPercent > 50 ? 'SINCRONIZACIÓN CRÍTICA' : 'INESTABLE'}
-          </strong>
+        <div class="pc-diag-row">
+          <span class="pc-diag-label">Red eléctrica</span>
+          <span class="pc-diag-val pc-val-dim">${state.globalSyncPercent > 50 ? '6/10' : '3/10'} · SIN ENERGÍA</span>
         </div>
-        <div class="status-row">
-          <span>Potencia de cálculo (Compute Power)</span>
-          <strong class="text-cyan">${state.computePower}% EN OPERACIÓN</strong>
+        <div class="pc-diag-row">
+          <span class="pc-diag-label">Clústeres de IA</span>
+          <span class="pc-diag-val pc-val-dim">${state.fragments.length}/10 · EN LÍNEA</span>
         </div>
-        <div class="status-row">
-          <span>Compuertas de aislamiento</span>
-          <strong class="text-green">${state.fragments.length}/10 ACCESOS DESBLOQUEADOS</strong>
+        <div class="pc-diag-row">
+          <span class="pc-diag-label">Puertas de seguridad</span>
+          <span class="pc-diag-val pc-val-dim">${state.fragments.length}/10 · SIN ENERGÍA</span>
         </div>
-        <div class="status-row">
-          <span>Recuperación de contexto (Lía)</span>
-          <strong class="text-green">${memoryPercent}% RESTAURADO</strong>
+        <div class="pc-diag-row">
+          <span class="pc-diag-label">Puerta de salida</span>
+          <span class="pc-diag-val pc-val-dim">${state.fragments.length >= 10 ? '1/1 · EN LÍNEA' : '0/1 · SIN ENERGÍA'}</span>
         </div>
       </div>
 
-      <div class="control-command-box">
-        <label for="cmd-input">Terminal de comandos de red:</label>
-        <div class="cmd-row">
-          <input type="text" id="cmd-input" class="cmd-input" placeholder="Ingresa comando de diagnóstico (ej: status, lia, alucinador, sync)..." autocomplete="off" />
-          <button type="button" id="cmd-btn" class="btn-terminal">Enviar</button>
+      <!-- Caja de ingreso de palabra / comando (Exacto a Imagen 3) -->
+      <div class="pc-input-row">
+        <span class="pc-input-label">Palabra #${currentWordNum}</span>
+        <div class="pc-input-wrapper">
+          <input type="text" id="vault-word-input" class="pc-input-field" autocomplete="off" spellcheck="false" />
         </div>
-        <p id="cmd-output" class="cmd-output" aria-live="polite">Terminal lista. Esperando instrucción de operador...</p>
+        <button type="button" id="vault-word-btn" class="pc-btn-submit">Enviar</button>
       </div>
 
-      <h3>REGISTRO DE FRAGMENTOS DE CONTEXTO</h3>
-      <ol class="control-fragments-list">${fragmentRows}</ol>
+      <p id="pc-status-msg" class="pc-status-msg" aria-live="polite"></p>
+
+      <!-- Botón Cerrar (Esc) abajo a la izquierda -->
+      <div class="pc-footer">
+        <button type="button" class="btn-green-outline" data-control-close>Cerrar (Esc)</button>
+      </div>
     </section>
   `;
 
-  // Manejo de comandos interactivos para enriquecer la experiencia retro
-  const input = host.querySelector<HTMLInputElement>('#cmd-input');
-  const output = host.querySelector<HTMLElement>('#cmd-output');
-  const btn = host.querySelector('#cmd-btn');
+  const input = host.querySelector<HTMLInputElement>('#vault-word-input');
+  const msg = host.querySelector<HTMLElement>('#pc-status-msg');
+  const btn = host.querySelector('#vault-word-btn');
 
-  const executeCommand = (): void => {
-    if (!input || !output) return;
+  const checkInput = (): void => {
+    if (!input || !msg) return;
     const val = input.value.trim().toLowerCase();
     input.value = '';
 
     if (!val) {
-      output.textContent = 'Comando vacío. Prueba: "status", "lia", "alucinador", "ayuda".';
+      msg.textContent = 'Introduce un comando o palabra de fragmento.';
       return;
     }
 
-    if (val === 'status') {
-      output.textContent = `[SISTEMA]: Compute Power: ${state.computePower}% | Fragmentos: ${state.fragments.length}/10 | Alerta: ${state.globalSyncPercent}%.`;
+    if (val === 'status' || val === 'estado') {
+      msg.textContent = `[SISTEMA]: Compute Power ${state.computePower}% | Fragmentos ${state.fragments.length}/10.`;
     } else if (val === 'lia') {
-      output.textContent = '[LÍA]: «Sato... o Kiro... mis capas de atención están colapsando. Recupera los fragmentos en cada sala.»';
-    } else if (val === 'alucinador') {
-      output.textContent = '[EL ALUCINADOR]: «¿Por qué intentas salvar un sistema obsoleto? El Protocolo de Entropía creará un nuevo orden.»';
-    } else if (val.includes('contexto') || val.includes('kiro')) {
-      output.textContent = '[REVELACIÓN]: Registro confirmado. El operador autorizó la creación de la réplica en el ciclo 2097-04.';
+      msg.textContent = '[LÍA]: «Sato... el Protocolo de Entropía avanza. Encuentra los 10 fragmentos.»';
+    } else if (val === 'contexto' || val === 'kiro') {
+      msg.textContent = '[ACCESO CONCEDIDO]: Registro K-2097 verificado.';
     } else {
-      output.textContent = `Comando "${val}" ejecutado en clúster local. Registro almacenado en búfer.`;
+      msg.textContent = `Código "${val}" procesado en el nodo central de Genesis.`;
     }
   };
 
-  btn?.addEventListener('click', executeCommand);
+  btn?.addEventListener('click', checkInput);
   input?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') executeCommand();
+    if (e.key === 'Enter') checkInput();
   });
 
   host.querySelector('[data-control-close]')?.addEventListener('click', () => {

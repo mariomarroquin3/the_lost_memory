@@ -1,6 +1,6 @@
 import './style.css';
 import { createGameState, type GameState } from './gameState';
-import { loadGameState, saveGameState } from './state/storage';
+import { loadGameState, saveGameState, clearGameState } from './state/storage';
 import { CanvasGame, ROOM_WIDTH, ROOM_HEIGHT } from './engine/canvasGame';
 import type { Rect, RoomMap } from './engine/types';
 import { Hud } from './ui/hud';
@@ -9,7 +9,6 @@ import { openRoom2Panel, openRoom3Panel } from './ui/verticalSlice';
 import { openMapPanel } from './ui/mapPanel';
 import { openControlPanel } from './ui/controlPanel';
 import { openLateRoomPanel } from './ui/lateRoomPanels';
-import { clearGameState } from './state/storage';
 import { Music } from './audio/music';
 import { ROOM_NAMES } from './rooms/roomNames';
 
@@ -26,30 +25,30 @@ const roomBanner = document.querySelector<HTMLElement>('#room-banner');
 const TOTAL_ROOMS = 10;
 const mapWidth = TOTAL_ROOMS * ROOM_WIDTH;
 
-// Generar muros y colisiones para las 10 salas del complejo Genesis
+// Generar muros y colisiones de las 10 salas del complejo
 const solids: Rect[] = [
-  // Muros superior e inferior de todo el complejo
-  { x: 0, y: 0, width: mapWidth, height: 42 },
-  { x: 0, y: ROOM_HEIGHT - 32, width: mapWidth, height: 32 },
-  // Límites izquierdo y derecho del complejo
+  // Muro superior
+  { x: 0, y: 0, width: mapWidth, height: 44 },
+  // Muro inferior (estanterías de archivo continuas)
+  { x: 0, y: ROOM_HEIGHT - 44, width: mapWidth, height: 44 },
+  // Extremos del complejo
   { x: 0, y: 0, width: 16, height: ROOM_HEIGHT },
   { x: mapWidth - 16, y: 0, width: 16, height: ROOM_HEIGHT },
 ];
 
 for (let r = 0; r < TOTAL_ROOMS; r++) {
   const rx = r * ROOM_WIDTH;
-  // Racks de servidores superiores
-  solids.push({ x: rx + 40, y: 42, width: 92, height: 44 });
-  solids.push({ x: rx + 480, y: 42, width: 92, height: 44 });
-  // Terminal de cómputo central
-  solids.push({ x: rx + 304, y: 52, width: 28, height: 26 });
-  // Cajas de suministros inferiores
-  solids.push({ x: rx + 50, y: 250, width: 44, height: 26 });
+  // Terminal CRT de cómputo
+  solids.push({ x: rx + 296, y: 52, width: 32, height: 26 });
+  // Racks de servidores
+  solids.push({ x: rx + 44, y: 44, width: 60, height: 42 });
+  // Caja de suministros con refuerzo en X
+  solids.push({ x: rx + 450, y: 180, width: 24, height: 24 });
 
-  // Muros divisorios entre salas (dejando puerta transitable en el medio)
+  // Muros divisorios entre salas (dejando puerta central de y: 134 a 250 abierta)
   if (r < TOTAL_ROOMS - 1) {
-    solids.push({ x: rx + ROOM_WIDTH - 8, y: 42, width: 16, height: 78 });
-    solids.push({ x: rx + ROOM_WIDTH - 8, y: 240, width: 16, height: 88 });
+    solids.push({ x: rx + ROOM_WIDTH - 8, y: 44, width: 16, height: 90 });
+    solids.push({ x: rx + ROOM_WIDTH - 8, y: 250, width: 16, height: ROOM_HEIGHT - 250 });
   }
 }
 
@@ -66,7 +65,7 @@ const engine = new CanvasGame(canvas, map, {
     saveGameState(state);
     hud.render(state);
     if (roomBanner) {
-      roomBanner.textContent = `GENESIS // SECTOR ${String(roomId).padStart(2, '0')} · ${ROOM_NAMES[roomId - 1]}`;
+      roomBanner.textContent = `GENESIS // SALA ${String(roomId).padStart(2, '0')} · ${ROOM_NAMES[roomId - 1]}`;
       roomBanner.classList.remove('room-banner--on');
       void roomBanner.offsetWidth;
       roomBanner.classList.add('room-banner--on');
@@ -78,6 +77,8 @@ const engine = new CanvasGame(canvas, map, {
       saveGameState(state);
       hud.render(state);
     };
+
+    // Si el jugador interactúa con la terminal principal de la sala
     const close = state.currentRoom === 2
       ? openRoom2Panel(state, overlay, refresh)
       : state.currentRoom === 3
@@ -94,9 +95,9 @@ const engine = new CanvasGame(canvas, map, {
   isRoomSolved: (roomId) => Boolean(state.fragments[roomId - 1]),
 });
 
-// Restaurar posición de Kiro según la sala guardada
-engine.player.x = (state.currentRoom - 1) * ROOM_WIDTH + 100;
-engine.player.y = 180;
+// Posicionar a Kiro en la sala activa
+engine.player.x = (state.currentRoom - 1) * ROOM_WIDTH + 312;
+engine.player.y = 200;
 
 const openOverlay = (open: () => void): void => {
   engine.setPaused(true);
@@ -106,12 +107,15 @@ const openOverlay = (open: () => void): void => {
 const closeOverlay = (): void => engine.setPaused(false);
 
 document.querySelector('#map-button')?.addEventListener('click', () => openOverlay(() => openMapPanel(state, overlay, closeOverlay)));
-document.querySelector('#control-button')?.addEventListener('click', () => openOverlay(() => openControlPanel(state, overlay, closeOverlay)));
+
+const updateMusicButton = (enabled: boolean): void => {
+  const button = document.querySelector('#music-button');
+  if (button) button.innerHTML = `Música: ${enabled ? 'sí' : 'no'}<br>(M)`;
+};
 
 document.querySelector('#music-button')?.addEventListener('click', () => {
   const enabled = music.toggle();
-  const button = document.querySelector('#music-button');
-  if (button) button.textContent = `Música: ${enabled ? 'sí' : 'no'} (M)`;
+  updateMusicButton(enabled);
 });
 
 document.querySelector('#fullscreen-button')?.addEventListener('click', () => {
@@ -131,8 +135,7 @@ window.addEventListener('keydown', (event) => {
   }
   if (event.key.toLowerCase() === 'm') {
     const enabled = music.toggle();
-    const button = document.querySelector('#music-button');
-    if (button) button.textContent = `Música: ${enabled ? 'sí' : 'no'} (M)`;
+    updateMusicButton(enabled);
   }
   if (event.key.toLowerCase() === 'f') {
     if (!document.fullscreenElement) void document.documentElement.requestFullscreen();
@@ -151,15 +154,10 @@ document.querySelectorAll<HTMLButtonElement>('[data-key]').forEach((button) => {
 
 document.querySelector('[data-action="interact"]')?.addEventListener('click', () => engine.interact());
 
-const resetButton = document.createElement('button');
-resetButton.type = 'button';
-resetButton.className = 'reset-button btn-retro';
-resetButton.textContent = 'Reiniciar memoria de IA';
-resetButton.addEventListener('click', () => {
+document.querySelector('#reset-button')?.addEventListener('click', () => {
   clearGameState();
   window.location.reload();
 });
-document.querySelector('.progress-copy')?.append(resetButton);
 
 hud.render(state);
 engine.start();

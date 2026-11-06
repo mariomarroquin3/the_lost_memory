@@ -3,42 +3,50 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>The Lost Memory // Genesis 2097</title>
+    <title>THE LOST MEMORY // GENESIS</title>
   </head>
   <body>
     <main class="game-shell">
+      <!-- TOPBAR ESTILO PROYECTO 21 (IMAGEN 1) -->
       <header class="topbar">
-        <div class="brand">THE LOST MEMORY <span class="brand-sub">GENESIS 2097</span></div>
-        <p class="topbar-hints">Flechas / WASD: mover · E: usar terminal · Tab: mapa · M: audio · F: fullscreen</p>
+        <div class="brand">GEN<span class="brand-colon">:</span>ESIS</div>
+        <p class="topbar-controls">Flechas o WASD: mover · E: mirar o usar · Tab: mapa · M: música · F: pantalla completa</p>
         <div class="topbar__actions">
-          <button type="button" id="map-button" class="btn-top">Mapa (Tab)</button>
-          <button type="button" id="control-button" class="btn-top">PC de Control</button>
-          <button type="button" id="music-button" class="btn-top">Música: no (M)</button>
-          <button type="button" id="fullscreen-button" class="btn-top">Pantalla completa (F)</button>
+          <button type="button" id="map-button" class="btn-topbar">Mapa<br>(Tab)</button>
+          <button type="button" id="music-button" class="btn-topbar">Música: no<br>(M)</button>
+          <button type="button" id="fullscreen-button" class="btn-topbar">Pantalla<br>completa (F)</button>
         </div>
       </header>
 
-      <div class="canvas-container">
-        <canvas id="game" width="640" height="360" aria-label="The Lost Memory"></canvas>
+      <!-- PANTALLA PRINCIPAL CON ASPECT-RATIO 5:3 -->
+      <div class="screen-frame">
+        <canvas id="game" width="640" height="384" aria-label="Genesis Escape Room"></canvas>
         <div id="room-banner" class="room-banner" aria-live="polite"></div>
         <aside id="hud" class="hud" aria-live="polite"></aside>
         <div id="overlay" class="overlay" hidden></div>
       </div>
 
+      <!-- PANEL INFERIOR DE PROGRESO (IMAGEN 1) -->
       <section class="progress-panel">
-        <div class="phrase-map">
-          <span class="phrase-map__title">MAPA DE RED LOCAL // GENESIS</span>
-          <div class="fragment-grid" id="fragment-grid"></div>
+        <!-- MINIMAPA DE SALAS (LADO IZQUIERDO) -->
+        <div class="minimap-container">
+          <div class="minimap-grid" id="minimap-grid"></div>
         </div>
-        <div class="progress-copy">
-          <div class="progress-header">
-            <p id="fragment-count">Memoria de IA · 0 de 10 fragmentos</p>
-            <span class="protocol-status">PROTOCOLO DE ENTROPÍA: ACTIVO</span>
+
+        <!-- CASILLAS DE FRAGMENTOS / PALABRAS (CENTRO Y DERECHA) -->
+        <div class="fragments-container">
+          <div class="fragments-header">
+            <span id="fragment-count">Fragmentos de contexto · 0 de 10 recuperados</span>
           </div>
-          <div class="fragment-words" id="fragment-words"></div>
+          <div class="fragment-slots" id="fragment-slots"></div>
+          <div class="fragments-footer">
+            <span class="collectibles-label" id="collectibles-label">Coleccionables · 0 de 10</span>
+            <button type="button" id="reset-button" class="btn-reset">Reiniciar</button>
+          </div>
         </div>
       </section>
 
+      <!-- CONTROLES TÁCTILES OPCIONALES PARA MÓVIL -->
       <div class="touch-controls" aria-label="Controles táctiles">
         <button type="button" data-key="arrowup">▲</button>
         <div>
