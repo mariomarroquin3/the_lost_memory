@@ -547,3 +547,207 @@ body[data-world='inverted'] .wall { background: repeating-linear-gradient(90deg,
 /* Barra de prueba (solo con ?debug en la URL) */
 .debug-bar { position: fixed; z-index: 50; left: 8px; top: 8px; display: flex; gap: 6px; align-items: center; padding: 6px; background: #0e0b13ee; border: 1px dashed #ff8a3d; font-size: 8px; color: #ff8a3d; }
 .debug-bar .btn-retro { font-size: 8px; padding: 4px 6px; }
+
+/* ---------- Cinemática final ---------- */
+.ending-scene {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  overflow: hidden;
+  background: #05040a;
+  color: #ece3d6;
+  font-family: var(--font-mono, monospace);
+  isolation: isolate;
+}
+.ending-scene__stage {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 50%, #10313b 0%, #100b18 48%, #05040a 86%);
+  transition: background .35s steps(3);
+}
+.ending-scene__world {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  opacity: .32;
+}
+.ending-scene__world--real {
+  left: 0;
+  border-right: 1px solid #f7931a66;
+  background: linear-gradient(115deg, #3c210a55, transparent 55%);
+}
+.ending-scene__world--inverted {
+  right: 0;
+  border-left: 1px solid #a46cff66;
+  background: linear-gradient(245deg, #29164e55, transparent 55%);
+}
+.ending-scene__world span {
+  position: absolute;
+  top: 10px;
+  color: currentColor;
+  font-size: 8px;
+  letter-spacing: .12em;
+  opacity: .75;
+}
+.ending-scene__world--real span { left: 12px; color: #f7931a; }
+.ending-scene__world--inverted span { right: 12px; color: #a46cff; }
+.ending-scene__web {
+  position: absolute;
+  inset: 12% 8%;
+  opacity: .42;
+  background: repeating-conic-gradient(from 10deg at 50% 52%, transparent 0 8deg, #ff1744 8.5deg 9deg, transparent 9.5deg 23deg);
+  mask-image: radial-gradient(ellipse, #000 0 44%, transparent 76%);
+  transition: opacity .5s;
+}
+.ending-scene__core {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(20vw, 112px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%) rotate(45deg);
+  border: 3px solid #00e5ff;
+  box-shadow: 0 0 20px #00e5ff, inset 0 0 24px #00e5ff99;
+  animation: ending-core-pulse 2s ease-in-out infinite;
+}
+.ending-scene__spider {
+  position: absolute;
+  left: 50%;
+  top: 32%;
+  width: 48px;
+  height: 32px;
+  transform: translate(-50%, -50%);
+  background: #191522;
+  border: 2px solid #ff1744;
+  box-shadow: 0 0 12px #ff1744;
+  image-rendering: pixelated;
+  transition: opacity .7s, transform .7s;
+}
+.ending-scene__spider::before {
+  content: '';
+  position: absolute;
+  inset: 7px 13px;
+  background: #8c2b82;
+  border: 1px solid #ff8a7a;
+}
+.ending-scene__spider i {
+  position: absolute;
+  width: 24px;
+  height: 2px;
+  left: 10px;
+  background: #ff1744;
+  transform-origin: 0 50%;
+}
+.ending-scene__spider i:nth-child(1) { top: 6px; transform: rotate(155deg); }
+.ending-scene__spider i:nth-child(2) { top: 12px; transform: rotate(170deg); }
+.ending-scene__spider i:nth-child(3) { top: 19px; transform: rotate(10deg); }
+.ending-scene__spider i:nth-child(4) { top: 25px; transform: rotate(25deg); }
+.ending-scene__echo {
+  position: absolute;
+  top: 72%;
+  padding: 4px 6px;
+  border: 1px solid currentColor;
+  background: #05040acc;
+  font-size: 7px;
+  opacity: .82;
+  transform: translateX(-50%);
+}
+.ending-scene__echo--real { left: 34%; color: #f7931a; }
+.ending-scene__echo--inverted { left: 66%; color: #a46cff; }
+.ending-scene__fragments {
+  position: absolute;
+  left: 50%;
+  bottom: 10%;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(38px, 1fr));
+  gap: 5px;
+  width: min(520px, 80%);
+  transform: translateX(-50%);
+}
+.ending-scene__fragment {
+  display: grid;
+  gap: 3px;
+  min-height: 28px;
+  padding: 4px;
+  border: 1px solid #3a3046;
+  color: #736b7d;
+  background: #0b0910cc;
+  font-size: 6px;
+  font-style: normal;
+  text-align: center;
+  transition: color .2s, border-color .2s, box-shadow .2s;
+}
+.ending-scene__fragment b { color: #51485c; font-size: 7px; }
+.ending-scene__fragment.is-on {
+  border-color: #00e5ff;
+  color: #c9faff;
+  background: #07313bcc;
+  box-shadow: 0 0 8px #00e5ff88;
+}
+.ending-scene__fragment.is-on b { color: #00e5ff; }
+.ending-scene__copy {
+  position: relative;
+  z-index: 2;
+  min-height: 78px;
+  padding: 10px 14px 8px;
+  border-top: 1px solid #2d7486;
+  background: rgba(5,4,10,.96);
+}
+.ending-scene__label { margin: 0 0 5px; color: #00e5ff; font-size: 9px; letter-spacing: .12em; }
+.ending-scene__line { min-height: 2em; margin: 0; color: #ece3d6; font-size: clamp(10px, 1.8vw, 14px); line-height: 1.4; }
+.ending-scene__credits {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  background: #05040af2;
+  color: #ece3d6;
+  font-size: clamp(9px, 1.8vw, 13px);
+  letter-spacing: .08em;
+  text-align: center;
+}
+.ending-scene__credits p { margin: 0; }
+.ending-scene__credits p:first-child { color: #00e5ff; font-size: 1.25em; }
+.ending-scene__skip {
+  position: absolute;
+  z-index: 5;
+  right: 12px;
+  bottom: 8px;
+  padding: 5px 8px;
+  border: 1px solid #665b71;
+  background: #0e0b13;
+  color: #c9bcd2;
+  font: inherit;
+  font-size: 8px;
+  cursor: pointer;
+}
+.ending-scene__skip:hover, .ending-scene__skip:focus-visible { border-color: #00e5ff; color: #fff; }
+.ending-scene__stage[data-shot='fragments'], .ending-scene__stage[data-shot='lia'], .ending-scene__stage[data-shot='epilogue'], .ending-scene__stage[data-shot='credits'] { background: radial-gradient(circle at 50% 50%, #103b43 0%, #0b1119 48%, #05040a 86%); }
+.ending-scene__stage[data-shot='new-genesis'] { background: radial-gradient(circle at 50% 50%, #252040 0%, #0b0910 52%, #05040a 86%); }
+.ending-scene__stage[data-shot='lost'] { background: radial-gradient(circle at 50% 50%, #421326 0%, #120812 48%, #05040a 86%); animation: ending-red-blink 1s steps(2) infinite; }
+.ending-scene__stage[data-shot='lost'] .ending-scene__web { opacity: .8; }
+.ending-scene__stage[data-shot='epilogue'] .ending-scene__spider, .ending-scene__stage[data-shot='credits'] .ending-scene__spider { opacity: 0; transform: translate(-50%, -50%) scale(.6); }
+.ending-scene__stage[data-shot='epilogue'] .ending-scene__web, .ending-scene__stage[data-shot='credits'] .ending-scene__web { opacity: .08; }
+.ending-scene[data-ending='lost'] .ending-scene__line { color: #ffb1b8; }
+@keyframes ending-core-pulse { 50% { opacity: .65; transform: translate(-50%, -50%) rotate(58deg) scale(1.06); } }
+@keyframes ending-red-blink { 50% { filter: saturate(1.6) brightness(1.25); } }
+@media (max-width: 620px) {
+  .ending-scene__fragments { width: 94%; gap: 3px; }
+  .ending-scene__fragment { min-height: 24px; padding: 3px 2px; font-size: 5px; }
+  .ending-scene__echo { max-width: 42%; font-size: 6px; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ending-scene *, .ending-scene__stage { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+}
+
+/* Créditos: nombres del equipo */
+.ending-scene__credits-sub { color: #9a8fa8; font-size: .85em; }
+.ending-scene__credits-role { margin-top: 10px !important; color: #f7931a; font-size: .8em; letter-spacing: .2em; }
+.ending-scene__credits-name { color: #fff; font-size: 1.15em; }
+/* Escena «La verdad»: registro del núcleo con la firma de Sato */
+.truth-scene__stage { display: grid; place-items: center; background: radial-gradient(circle at 50% 45%, #2a0f18 0%, #0b0910 70%); }
+.truth-scene__log { min-width: min(520px, 86%); min-height: 6.5em; margin: 0; padding: 14px 16px; border: 1px solid #ff1744; background: #0d0609; color: #ffb4b4; font: clamp(10px, 1.7vw, 13px)/1.6 var(--font-mono, monospace); white-space: pre-wrap; }

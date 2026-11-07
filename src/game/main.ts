@@ -14,6 +14,7 @@ import { Music } from '../audio/music';
 import { playOpening } from './opening';
 import { playChannelOpening } from './channelOpening';
 import { playBossOpening } from './bossOpening';
+import { clearEndingScenePlayed, hasEndingScenePlayed, markEndingScenePlayed, playEndingScene, playTruthScene, type EndingSceneViewer } from './endingScene';
 import { bossArenaPosition } from '../shared/reducer.js';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
@@ -22,6 +23,11 @@ const hud = document.querySelector<HTMLElement>('#hud')!;
 const banner = document.querySelector<HTMLElement>('#room-banner')!;
 const lobby = document.querySelector<HTMLElement>('#lobby')!;
 const music = new Music();
+
+function syncMusicButton(enabled = music.enabled): void {
+  const button = document.querySelector('#music-button');
+  if (button) button.innerHTML = `Música: ${enabled ? 'sí' : 'no'}<br>(M)`;
+}
 
 let session: Session;
 let engine: TileEngine;
@@ -32,6 +38,7 @@ let bossOpeningPlaying = false;
 let bossFightShown = false;
 let bossVictoryShown = false;
 let finalDecisionShown = false;
+let endingScenePlaying = false;
 let lastAlert = 5;
 let audioChannelActive = false;
 
@@ -78,7 +85,12 @@ function showLobby(error = ''): void {
     const coop = new CoopSession();
     coop.connect(code, last?.code === code ? last.world : null).then(() => begin(coop)).catch(fail);
   });
-  lobby.querySelectorAll<HTMLButtonElement>('[data-solo]').forEach((b) => b.addEventListener('click', () => { music.unlock(); void begin(new SoloSession(b.dataset.solo === 'new')); }));
+  lobby.querySelectorAll<HTMLButtonElement>('[data-solo]').forEach((b) => b.addEventListener('click', () => {
+    music.unlock();
+    const fresh = b.dataset.solo === 'new';
+    if (fresh) clearEndingScenePlayed('SOLO');
+    void begin(new SoloSession(fresh));
+  }));
 }
 
 // ============================== JUEGO ==============================
@@ -226,8 +238,8 @@ const ENDINGS: Record<Ending, { code: string; text: string }> = {
   lost: { code: 'GLOBAL CONTEXT: LOST', text: 'El Alucinador completa el Protocolo de Entropía. Habla con total seguridad. Nadie comprueba nada.' },
 };
 
-function showEnding(ending: Ending): void {
-  if (shownEnding === ending) return;
+function showEnding(ending: Ending, force = false): void {
+  if (!force && shownEnding === ending) return;
   shownEnding = ending;
   engine.setPaused(true);
   const e = ENDINGS[ending];
@@ -237,6 +249,52 @@ function showEnding(ending: Ending): void {
     <p class="code">GENESIS PROTOCOL: ACTIVE · ARCHIVE 00: OPEN · NEW SIGNAL DETECTED</p>
     <button type="button" class="btn-retro" data-close>Seguir explorando</button></section>`;
   overlay.querySelector('[data-close]')?.addEventListener('click', closePanel);
+}
+
+function endingAudioLine(line: string): void {
+  if (line.startsWith('ALUCINADOR')) music.event('alucinador');
+  else if (line.startsWith('LÍA')) music.event('lia');
+}
+
+function sceneLineAudio(line: string): void {
+  const text = line.trimStart();
+  if (text.startsWith('ALUCINADOR') || text.startsWith('>')) music.event('alucinador');
+  else if (text.startsWith('LÍA')) music.event('lia');
+}
+
+function endingViewer(): EndingSceneViewer {
+  return session.mode === 'solo' ? 'solo' : session.world;
+}
+
+/** Reproduce el final una sola vez y conserva la pantalla final existente al terminar. */
+function maybePlayEnding(ending: Ending): void {
+  if (engine.inIntro || endingScenePlaying || channelOpeningPlaying || bossOpeningPlaying) return;
+  if (finalDecisionShown) {
+    finalDecisionShown = false;
+    refreshPanel = null;
+    overlay.hidden = true;
+    overlay.replaceChildren();
+  } else if (!overlay.hidden) {
+    return;
+  }
+  if (hasEndingScenePlayed(session.code, endingViewer())) {
+    showEnding(ending);
+    return;
+  }
+
+  endingScenePlaying = true;
+  markEndingScenePlayed(session.code, endingViewer());
+  music.event(ending === 'lia' ? 'ending-lia' : ending === 'new-genesis' ? 'ending-new-genesis' : 'ending-lost');
+  refreshPanel = null;
+  engine.setPaused(true);
+  void playEndingScene(overlay, ending, {
+    cooperative: session.mode === 'coop',
+    onLine: endingAudioLine,
+  }).then(() => {
+    endingScenePlaying = false;
+    engine.setPaused(true);
+    showEnding(ending, true);
+  });
 }
 
 function switchWorld(): void {
@@ -312,9 +370,23 @@ function render(): void {
   if (!session || !engine) return;
   const st = session.state;
   const w = session.world;
+  const roomId = roomsOf(w)[engine.room];
   music.unlock();
   music.setWorld(w);
   music.setAlert(st.alert);
+  music.setFragments(st.fragments);
+  music.setScene(
+    st.ending === 'lia' ? 'final-lia'
+      : st.ending === 'new-genesis' ? 'final-new-genesis'
+        : st.ending === 'lost' ? 'final-lost'
+          : st.boss?.active || st.boss?.phase === 'defeated' ? 'core'
+            : st.alert >= 75 ? 'vulnerability'
+              : st.alert >= 45 ? 'intrusion'
+                : st.fragments > 0 ? 'recovery'
+                  : st.channelActive || roomId?.startsWith('comms') || roomId === 'transition'
+                    ? 'investigation' : 'exploration',
+  );
+  syncMusicButton();
   if (st.alert > lastAlert) music.event('alert');
   lastAlert = st.alert;
   if (st.channelActive && !audioChannelActive) music.event('channel-open');
@@ -366,7 +438,7 @@ function render(): void {
       return `<div class="minimap-cell ${here ? 'minimap-cell--current' : ''} ${st.solved.includes(r.id) ? 'minimap-cell--found' : ''} ${peerHere ? 'minimap-cell--peer' : ''}" title="${r.name}">${hidden ? '?' : r.short}</div>`;
     }).join('')}</div>`).join('');
 
-  if (st.ending) showEnding(st.ending);
+  if (st.ending) maybePlayEnding(st.ending);
   refreshPanel?.();
   maybePlayChannelOpening();
   maybePlayBossFlow();
@@ -404,7 +476,7 @@ function maybePlayChannelOpening(): void {
   refreshPanel = null;
   engine.setPaused(true);
   session.dispatch({ type: 'mark-channel-opening-seen' });
-  void playChannelOpening(overlay, (line) => music.event(line.startsWith('ALUCINADOR') ? 'alucinador' : 'lia')).then(() => {
+  void playChannelOpening(overlay, sceneLineAudio).then(() => {
     channelOpeningPlaying = false;
     engine.setPaused(false);
     render();
@@ -431,7 +503,7 @@ function maybePlayBossFlow(): void {
     // Los dos clientes dibujan la arena de i10, incluso si uno pertenece al Real.
     if (session.world === 'real') engine.setWorld('inverted', 6);
     else if (engine.world !== 'inverted' || engine.room !== 6) engine.setWorld('inverted', 6);
-    void playBossOpening(overlay, (line) => music.event(line.startsWith('ALUCINADOR') ? 'alucinador' : 'lia')).then(() => {
+    void playBossOpening(overlay, sceneLineAudio).then(() => {
       bossOpeningPlaying = false;
       if (!session.state.boss.active) {
         engine.setPaused(false);
@@ -456,11 +528,9 @@ function maybePlayBossFlow(): void {
     if (session.world === 'real' && engine.world !== 'real') {
       engine.setWorld('real', session.state.positions.real ?? 1);
     }
-    if (!bossVictoryShown) {
-      showBossVictory();
-      return;
-    }
-    openFinalDecision();
+    // setWorld puede volver a llamar a render() y mostrar la victoria antes de llegar aquí;
+    // en ese caso no hay que saltar a la decisión (se saltaba la victoria y la escena de la verdad).
+    if (!bossVictoryShown) showBossVictory();
   }
 }
 
@@ -474,10 +544,30 @@ function showBossVictory(): void {
     <button type="button" class="btn-terminal" data-continue>Continuar</button>
   </section>`;
   const continueButton = overlay.querySelector('[data-continue]');
-  continueButton?.addEventListener('click', openFinalDecision, { once: true });
-  window.setTimeout(() => {
-    if (bossVictoryShown && !finalDecisionShown && !session.state.ending) openFinalDecision();
-  }, 2200);
+  continueButton?.addEventListener('click', playTruthThenDecide, { once: true });
+  window.setTimeout(playTruthThenDecide, 2200);
+}
+
+/**
+ * Entre la victoria y la decisión: la escena «La verdad» confirma que Sato firmó la orden.
+ * Se ve una sola vez por partida en este navegador (marca local, como las otras escenas).
+ */
+let truthPlaying = false;
+function playTruthThenDecide(): void {
+  if (truthPlaying || finalDecisionShown || session.state.ending) return;
+  const key = `rescate-verdad-${session.code}`;
+  let seen = false;
+  try { seen = localStorage.getItem(key) === '1'; } catch { /* sin almacenamiento */ }
+  if (seen) { openFinalDecision(); return; }
+  truthPlaying = true;
+  try { localStorage.setItem(key, '1'); } catch { /* sin almacenamiento */ }
+  engine.setPaused(true);
+  void playTruthScene(overlay, { onLine: endingAudioLine }).then(() => {
+    truthPlaying = false;
+    // Si el otro jugador ya eligió el final mientras se veía la escena, pasar directo al final.
+    if (!session.state.ending) openFinalDecision();
+    else render();
+  });
 }
 
 async function begin(s: Session): Promise<void> {
@@ -488,6 +578,7 @@ async function begin(s: Session): Promise<void> {
   bossFightShown = false;
   bossVictoryShown = false;
   finalDecisionShown = false;
+  endingScenePlaying = false;
   lastAlert = s.state.alert;
   audioChannelActive = s.state.channelActive;
   lobby.hidden = true;
@@ -524,7 +615,7 @@ async function begin(s: Session): Promise<void> {
   // El opening ocupa el overlay antes de habilitar las entradas del juego.
   // El motor no inicia su RAF hasta que la promesa de la cinemática termina.
   engine.setPaused(true);
-  await playOpening(overlay, (line) => music.event(line.startsWith('ALUCINADOR') || line.startsWith('>') ? 'alucinador' : 'lia'));
+  await playOpening(overlay, sceneLineAudio);
   engine.skipIntro();
   engine.setPaused(false);
   render(); // por si al entrar ya toca la escena del canal o el jefe
@@ -555,6 +646,13 @@ function bindDebug(): void {
   bar.innerHTML = `<span>DEBUG</span>
     <button type="button" class="btn-retro" data-debug="opening">Escena 1 (inicio)</button>
     <button type="button" class="btn-retro" data-debug="channel">Escena 2 (canal)</button>
+    <select class="btn-retro" data-debug-ending aria-label="Final de prueba">
+      <option value="lia">Final: Lía</option>
+      <option value="new-genesis">Final: Nuevo Genesis</option>
+      <option value="lost">Final: Perdido</option>
+    </select>
+    <button type="button" class="btn-retro" data-debug="truth">La verdad</button>
+    <button type="button" class="btn-retro" data-debug="ending">Escena final</button>
     <button type="button" class="btn-retro" data-debug="boss">Ir al jefe final</button>`;
   document.body.append(bar);
   const play = (fn: (host: HTMLElement) => Promise<void>): void => {
@@ -564,6 +662,20 @@ function bindDebug(): void {
   };
   bar.querySelector('[data-debug="opening"]')?.addEventListener('click', () => play(playOpening));
   bar.querySelector('[data-debug="channel"]')?.addEventListener('click', () => play(playChannelOpening));
+  bar.querySelector('[data-debug="truth"]')?.addEventListener('click', () => play((host) => playTruthScene(host, { onLine: endingAudioLine })));
+  bar.querySelector('[data-debug="ending"]')?.addEventListener('click', () => {
+    if (engine.inIntro || endingScenePlaying || !overlay.hidden) return;
+    const selector = bar.querySelector<HTMLSelectElement>('[data-debug-ending]');
+    const ending = (selector?.value ?? 'lia') as Ending;
+    endingScenePlaying = true;
+    music.event(ending === 'lia' ? 'ending-lia' : ending === 'new-genesis' ? 'ending-new-genesis' : 'ending-lost');
+    engine.setPaused(true);
+    void playEndingScene(overlay, ending, { cooperative: session.mode === 'coop', onLine: endingAudioLine }).then(() => {
+      endingScenePlaying = false;
+      engine.setPaused(true);
+      showEnding(ending, true);
+    });
+  });
   bar.querySelector('[data-debug="boss"]')?.addEventListener('click', () => {
     // Marca las 10 salas y el canal como resueltos (en cooperativo, para los dos) y arranca el jefe.
     session.dispatch({ type: 'debug-boss' });
@@ -575,21 +687,18 @@ function bindControls(): void {
   bindDebug();
   if (controlsBound) return;
   controlsBound = true;
-  const updateMusic = (on: boolean): void => {
-    const b = document.querySelector('#music-button');
-    if (b) b.innerHTML = `Música: ${on ? 'sí' : 'no'}<br>(M)`;
-  };
+  const updateMusic = (): void => syncMusicButton();
   window.addEventListener('keydown', (e) => {
     const typing = (e.target as HTMLElement)?.tagName === 'INPUT';
     if (e.key === 'Escape' && !overlay.hidden) closePanel();
     if (typing) return;
-    if (e.key.toLowerCase() === 'm') updateMusic(music.toggle());
+    if (e.key.toLowerCase() === 'm') { music.toggle(); updateMusic(); }
     if (e.key.toLowerCase() === 'g' && overlay.hidden && !engine.inIntro) openGuide();
     if (e.key.toLowerCase() === 'f') {
       if (!document.fullscreenElement) void document.documentElement.requestFullscreen(); else void document.exitFullscreen();
     }
   });
-  document.querySelector('#music-button')?.addEventListener('click', () => updateMusic(music.toggle()));
+  document.querySelector('#music-button')?.addEventListener('click', () => { music.toggle(); updateMusic(); });
   document.querySelector('#audio-settings-button')?.addEventListener('click', () => { if (!overlay.hidden) return; openAudioSettings(); });
   document.querySelector('#guide-button')?.addEventListener('click', () => { if (overlay.hidden) openGuide(); });
   document.querySelector('#fullscreen-button')?.addEventListener('click', () => {
