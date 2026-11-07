@@ -782,3 +782,95 @@ export function drawWallCracks(
   ctx.stroke();
   ctx.restore();
 }
+
+/** Barra de memoria holográfica: señalética propia de Genesis, no un objeto decorativo externo. */
+export function drawMemoryPrism(ctx: CanvasRenderingContext2D, x: number, y: number, room: number, time: number): void {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+  const pulse = 0.55 + Math.sin(time * 2 + room) * 0.2;
+  ctx.fillStyle = '#111522';
+  ctx.fillRect(0, 0, 100, 12);
+  ctx.fillStyle = '#26314a';
+  ctx.fillRect(2, 2, 96, 8);
+  for (let i = 0; i < 8; i += 1) {
+    ctx.fillStyle = i < room % 8 ? '#f7931a' : `rgba(0, 229, 255, ${pulse})`;
+    ctx.fillRect(6 + i * 11, 4, 7, 4);
+  }
+  ctx.restore();
+}
+
+/** Columna de proyección de contexto, con fallas magenta cuando el Alucinador interviene. */
+export function drawHologramColumn(ctx: CanvasRenderingContext2D, x: number, y: number, room: number, time: number): void {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+  const corrupted = Math.sin(time * 1.7 + room) > 0.35;
+  ctx.fillStyle = 'rgba(0, 229, 255, 0.12)';
+  ctx.fillRect(0, 0, 24, 70);
+  ctx.fillStyle = corrupted ? '#d500f9' : '#00e5ff';
+  for (let row = 0; row < 8; row += 1) {
+    const width = 8 + ((row + room) % 4) * 3;
+    ctx.globalAlpha = 0.35 + (row % 3) * 0.15;
+    ctx.fillRect(12 - width / 2, 4 + row * 8, width, 2);
+  }
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#1a1420';
+  ctx.fillRect(5, 68, 14, 4);
+  ctx.restore();
+}
+
+/** Nodo de fibra que comunica las salas y pulsa al ritmo de la sincronización. */
+export function drawFiberNode(ctx: CanvasRenderingContext2D, x: number, y: number, seed: number, time: number): void {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+  ctx.strokeStyle = '#2f8a4c';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, 14);
+  ctx.quadraticCurveTo(28, -4, 56, 14);
+  ctx.stroke();
+  ctx.fillStyle = '#1a1420';
+  ctx.fillRect(22, 5, 16, 13);
+  ctx.fillStyle = Math.sin(time * 3 + seed) > 0 ? '#4cc47a' : '#143820';
+  ctx.fillRect(26, 8, 3, 3);
+  ctx.fillStyle = '#00e5ff';
+  ctx.fillRect(32, 8, 3, 3);
+  ctx.restore();
+}
+
+/** Cápsula de contención para recuerdos fragmentados. */
+export function drawContainmentPod(ctx: CanvasRenderingContext2D, x: number, y: number, room: number, time: number): void {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y));
+  ctx.fillStyle = 'rgba(0, 0, 0, .35)';
+  ctx.fillRect(0, 30, 48, 5);
+  ctx.fillStyle = '#3a3347';
+  ctx.fillRect(4, 4, 40, 28);
+  ctx.fillStyle = '#202b3d';
+  ctx.fillRect(8, 7, 32, 20);
+  ctx.strokeStyle = '#596a86';
+  ctx.strokeRect(9.5, 8.5, 29, 17);
+  ctx.fillStyle = room % 2 ? '#00e5ff' : '#d500f9';
+  ctx.globalAlpha = 0.45 + Math.sin(time * 2 + room) * 0.15;
+  ctx.fillRect(14, 12, 20, 10);
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#f7931a';
+  ctx.fillRect(22, 0, 4, 4);
+  ctx.restore();
+}
+
+/** Fragmento cristalino que representa una pieza de contexto fuera de fase. */
+export function drawSignalShard(ctx: CanvasRenderingContext2D, x: number, y: number, time: number): void {
+  ctx.save();
+  ctx.translate(Math.round(x), Math.round(y + Math.sin(time * 2) * 2));
+  ctx.fillStyle = '#00e5ff';
+  ctx.beginPath();
+  ctx.moveTo(0, 8);
+  ctx.lineTo(6, 0);
+  ctx.lineTo(12, 8);
+  ctx.lineTo(6, 18);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#d8fbff';
+  ctx.fillRect(5, 4, 2, 5);
+  ctx.restore();
+}

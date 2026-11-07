@@ -1,18 +1,16 @@
 import type { CanvasGameEvents, Facing, Player, Rect, RoomMap } from './types';
+import { MAP_HEIGHT, MAP_WIDTH, ROOM_HEIGHT, ROOM_WIDTH, roomAtPosition, roomOrigin } from './roomLayout';
 import {
   drawKiroSprite,
   drawKiroWakingUpSprite,
-  drawAIDroneCompanion,
-  drawFallenRack,
-  drawRubblePile,
+  drawMemoryPrism,
+  drawHologramColumn,
+  drawFiberNode,
+  drawContainmentPod,
+  drawSignalShard,
   drawPuddle,
   drawBrokenGlass,
   drawEmergencyLight,
-  drawScatteredPapers,
-  drawEnergyNuggets,
-  drawBookshelf,
-  drawSupplyCrate,
-  drawHazardTape,
   drawServerRack,
   drawComputerTerminal,
   drawInteractionPrompt,
@@ -31,8 +29,7 @@ interface Mote {
   phase: number;
 }
 
-export const ROOM_WIDTH = 640;
-export const ROOM_HEIGHT = 384;
+export { ROOM_WIDTH, ROOM_HEIGHT } from './roomLayout';
 
 /**
  * Motor Canvas de Proyecto 21 / Genesis 2097 con Modo Película / Cinemática de Inicio.
@@ -152,8 +149,8 @@ export class CanvasGame {
 
   /** Devuelve la ubicación de la terminal de cada sala. */
   getTerminalPosition(roomId: number): { x: number; y: number } {
-    const rx = (roomId - 1) * ROOM_WIDTH;
-    return { x: rx + 296, y: 52 };
+    const origin = roomOrigin(roomId);
+    return { x: origin.x + 296, y: origin.y + 52 };
   }
 
   /** Comprueba si el jugador está junto a la terminal. */
@@ -235,7 +232,7 @@ export class CanvasGame {
     this.tryMove(dx * distance, 0);
     this.tryMove(0, dy * distance);
 
-    const nextRoom = Math.min(10, Math.floor(this.player.x / ROOM_WIDTH) + 1);
+    const nextRoom = roomAtPosition(this.player.x, this.player.y);
     if (nextRoom !== this.currentRoom) {
       this.currentRoom = nextRoom;
       this.events.onRoomChanged?.(nextRoom);
@@ -263,11 +260,11 @@ export class CanvasGame {
 
   private draw(): void {
     const { width, height } = this.canvas;
-    const targetRoomX = (this.currentRoom - 1) * ROOM_WIDTH;
+    const targetRoom = roomOrigin(this.currentRoom);
 
     // Cámara suavemente enmarcada en la sala actual
-    const targetCamX = clamp(this.player.x - width / 2, targetRoomX, targetRoomX + ROOM_WIDTH - width);
-    const targetCamY = clamp(this.player.y - height / 2, 0, Math.max(0, this.map.height - height));
+    const targetCamX = clamp(this.player.x - width / 2, targetRoom.x, targetRoom.x + ROOM_WIDTH - width);
+    const targetCamY = clamp(this.player.y - height / 2, targetRoom.y, targetRoom.y + ROOM_HEIGHT - height);
 
     this.cameraX += (targetCamX - this.cameraX) * 0.18;
     this.cameraY += (targetCamY - this.cameraY) * 0.18;
@@ -283,12 +280,7 @@ export class CanvasGame {
     this.context.translate(-cx, -cy);
 
     // 2. Renderizar salas visibles
-    const startRoom = Math.max(1, Math.floor(cx / ROOM_WIDTH) + 1);
-    const endRoom = Math.min(10, Math.floor((cx + width) / ROOM_WIDTH) + 1);
-
-    for (let r = startRoom; r <= endRoom; r++) {
-      this.drawRoom(r);
-    }
+    for (let r = 1; r <= 10; r++) this.drawRoom(r);
 
     // 3. Renderizar al protagonista (Kiro)
     if (this.introActive && this.introElapsed < 4.0) {
@@ -326,8 +318,12 @@ export class CanvasGame {
   /** Renderiza una sala completa según movie_mode_SKILL.md (Sala 1: Estación de seguridad). */
   private drawRoom(room: number): void {
     const ctx = this.context;
-    const rx = (room - 1) * ROOM_WIDTH;
+    const origin = roomOrigin(room);
+    const rx = origin.x;
+    const ry = origin.y;
     const t = this.timeSeconds;
+    ctx.save();
+    ctx.translate(0, ry);
 
     // A. SUELO TÉCNICO (Grid de centro de datos con remaches de 32px)
     ctx.fillStyle = '#1e1c25';
@@ -378,26 +374,20 @@ export class CanvasGame {
     ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
     ctx.fillRect(rx, 44, ROOM_WIDTH, 3);
 
-    // C. CINTA DE PELIGRO DIAGONAL (HAZARD STRIPES) EN LA ESQUINA SUPERIOR (IMAGEN 1)
-    drawHazardTape(ctx, rx + 150, 8, 96, 14);
+    // C. SEÑALÉTICA PROPIA DE GENESIS: una barra de memoria en vez de cinta de peligro.
+    drawMemoryPrism(ctx, rx + 146, 10, room, t);
 
     // D. LUZ DE EMERGENCIA EN LA PARED EN X: 232 (movie_mode_SKILL.md)
     drawEmergencyLight(ctx, rx + 232, 14, true, t);
 
-    // E. GRIETAS EN PARED FRONTAL Y HUECOS DE DAÑO (movie_mode_SKILL.md)
-    drawWallCracks(ctx, rx + 340, 10);
-    drawWallCracks(ctx, rx + 440, 130);
-    // Hueco negro en muro con escombro abajo
-    ctx.fillStyle = '#0b0910';
-    ctx.fillRect(rx + 380, 26, 12, 16);
-    drawRubblePile(ctx, rx + 376, 44);
+    // E. FALLAS DE CONTEXTO: cortes de señal y un panel de memoria incompleto.
+    drawHologramColumn(ctx, rx + 366, 20, room, t);
+    drawSignalShard(ctx, rx + 448, 112, t);
 
-    // F. MURO INFERIOR: ESTANTERÍAS DE ARCHIVO DE PUNTA A PUNTA (IMAGEN 1)
-    const shelfWidth = 56;
-    for (let sx = rx + 32; sx < rx + ROOM_WIDTH - 32; sx += shelfWidth + 8) {
-      drawBookshelf(ctx, sx, ROOM_HEIGHT - 42, shelfWidth, 38);
-    }
-    drawWallCracks(ctx, rx + 320, ROOM_HEIGHT - 48);
+    // F. MURO INFERIOR: canal de fibra óptica, exclusivo del complejo Genesis.
+    drawFiberNode(ctx, rx + 40, ROOM_HEIGHT - 35, room, t);
+    drawFiberNode(ctx, rx + 220, ROOM_HEIGHT - 35, room + 2, t);
+    drawFiberNode(ctx, rx + 400, ROOM_HEIGHT - 35, room + 4, t);
 
     // G. MUROS LATERALES Y COMPUERTAS (Tapa oscura #1b1622 con motas y sombra de 2 px)
     ctx.fillStyle = '#1b1622';
@@ -424,37 +414,17 @@ export class CanvasGame {
     drawServerRack(ctx, rx + 44, 48, 26, 40, t, room * 7);
     drawServerRack(ctx, rx + 74, 48, 26, 40, t, room * 11);
 
-    // I. COMPAÑERO / DRON ASISTENTE DE IA (INSPIRADO EN EL OSO BLANCO DE PROYECTO 21)
-    drawAIDroneCompanion(ctx, rx + 288, 76, t);
+    // I. Cápsula de contención de memoria: identidad propia de Genesis.
+    drawContainmentPod(ctx, rx + 286, 112, room, t);
 
-    // J. DAÑOS ESPECÍFICOS DE LA ESTACIÓN DE SEGURIDAD (movie_mode_SKILL.md)
-    // Rack caído
-    drawFallenRack(ctx, rx + 110, 160);
-
-    // Montón de escombro
-    drawRubblePile(ctx, rx + 490, 120);
-
-    // Charco oscuro reflectante
+    // J. Daño ambiental abstracto: reflejos, cables y fracturas de señal.
     drawPuddle(ctx, rx + 370, 220, 34, 12);
-
-    // Vidrios rotos con destello
     drawBrokenGlass(ctx, rx + 150, 240);
-
-    // Hojas de papel dispersas por el suelo (Imagen 1)
-    drawScatteredPapers(ctx, rx + 190, 120, -0.1);
-    drawScatteredPapers(ctx, rx + 224, 150, 0.2);
-    drawScatteredPapers(ctx, rx + 460, 195, 0.1);
-    drawScatteredPapers(ctx, rx + 440, 80, -0.25);
-
-    // Pepitas doradas / celdas de energía
-    drawEnergyNuggets(ctx, rx + 170, 185);
-
-    // Caja de suministros con refuerzo en X
-    drawSupplyCrate(ctx, rx + 450, 180, 24);
 
     // Cables sueltos con ráfagas de chispas
     const spark = Math.sin(t * 8 + room) > 0.94;
     drawFloorCable(ctx, rx + 100, 88, rx + 170, 140, spark);
+    ctx.restore();
   }
 
   /** Iluminación con linterna dinámica y parpadeo realista de inicio. */
@@ -533,8 +503,9 @@ export class CanvasGame {
     }
 
     // Luz roja de emergencia en la pared a 2 Hz (movie_mode_SKILL.md)
-    const alarmX = Math.round((this.currentRoom - 1) * ROOM_WIDTH + 236 - cx);
-    const alarmY = Math.round(20 - cy);
+    const alarmOrigin = roomOrigin(this.currentRoom);
+    const alarmX = Math.round(alarmOrigin.x + 236 - cx);
+    const alarmY = Math.round(alarmOrigin.y + 20 - cy);
     const alarmOn = Math.sin(this.timeSeconds * Math.PI * 4) > 0;
     if (alarmOn) {
       const alarmGrad = lctx.createRadialGradient(alarmX, alarmY, 4, alarmX, alarmY, 54);

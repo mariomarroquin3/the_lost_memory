@@ -244,7 +244,8 @@ body {
 
 .minimap-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(3, 26px);
   gap: 4px;
   width: 134px;
 }
@@ -542,7 +543,8 @@ body {
 
 .map-grid-5 {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: repeat(3, minmax(72px, auto));
   gap: 12px 10px;
   margin-bottom: 20px;
 }

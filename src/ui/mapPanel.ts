@@ -1,5 +1,6 @@
 import type { GameState } from '../gameState';
 import { ROOM_NAMES } from '../rooms/roomNames';
+import { ROOM_LAYOUT } from '../engine/roomLayout';
 
 export function openMapPanel(state: GameState, host: HTMLElement, onClose: () => void): void {
   host.hidden = false;
@@ -11,11 +12,13 @@ export function openMapPanel(state: GameState, host: HTMLElement, onClose: () =>
     const roomName = ROOM_NAMES[index] ?? 'Sector';
     const num = String(room).padStart(2, '0');
 
-    // Estado del conector entre salas (rojo si puerta cerrada, verde si abierta)
-    const doorConnector = index % 5 !== 4 ? `<i class="map-connector ${isFound ? 'map-connector--open' : 'map-connector--locked'}"></i>` : '';
+    const position = ROOM_LAYOUT[room];
+    const doorConnector = position.col < 3 && ROOM_LAYOUT[room + 1]?.row === position.row
+      ? `<i class="map-connector ${isFound ? 'map-connector--open' : 'map-connector--locked'}"></i>`
+      : '';
 
     return `
-      <div class="map-cell-wrapper">
+      <div class="map-cell-wrapper" style="grid-column:${position.col + 1};grid-row:${position.row + 1}">
         <div class="map-box ${isCurrent ? 'map-box--current' : ''} ${isFound ? 'map-box--found' : ''}">
           <div class="map-box__num">#${num}</div>
           <div class="map-box__name">${isCurrent || isFound ? roomName : '???'}</div>

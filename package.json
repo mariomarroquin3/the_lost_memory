@@ -1,11 +1,13 @@
 {
-  "name": "hackathon",
+  "name": "el-rescate-del-contexto",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "vite",
+    "server": "node server/server.js",
+    "dev:all": "node server/server.js & vite",
     "build": "tsc --noEmit && vite build",
+    "start": "node server/server.js",
     "preview": "vite preview"
   },
   "keywords": [],
@@ -13,7 +15,13 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/ws": "^8.18.2",
     "typescript": "^7.0.2",
     "vite": "^8.3.6"
-  }
+  },
+  "dependencies": {
+    "ws": "^8.22.1"
+  },
+  "type": "module"
 }

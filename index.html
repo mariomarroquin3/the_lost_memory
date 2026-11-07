@@ -3,16 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>THE LOST MEMORY // GENESIS</title>
+    <title>El Rescate del Contexto</title>
   </head>
   <body>
     <main class="game-shell">
       <!-- TOPBAR ESTILO PROYECTO 21 (IMAGEN 1) -->
       <header class="topbar">
-        <div class="brand">GEN<span class="brand-colon">:</span>ESIS</div>
-        <p class="topbar-controls">Flechas o WASD: mover · E: mirar o usar · Tab: mapa · M: música · F: pantalla completa</p>
+        <div class="brand">RESCATE<span class="brand-colon">:</span>CONTEXTO</div>
+        <p class="topbar-controls">Flechas o WASD: mover · E: usar · Esc: cerrar · M: música · F: pantalla completa</p>
         <div class="topbar__actions">
-          <button type="button" id="map-button" class="btn-topbar">Mapa<br>(Tab)</button>
+          <button type="button" id="lobby-button" class="btn-topbar">Menú<br>partida</button>
           <button type="button" id="music-button" class="btn-topbar">Música: no<br>(M)</button>
           <button type="button" id="fullscreen-button" class="btn-topbar">Pantalla<br>completa (F)</button>
         </div>
@@ -20,11 +20,12 @@
 
       <!-- PANTALLA PRINCIPAL CON ASPECT-RATIO 5:3 -->
       <div class="screen-frame">
-        <canvas id="game" width="640" height="384" aria-label="Genesis Escape Room"></canvas>
+        <canvas id="game" width="640" height="384" aria-label="El Rescate del Contexto"></canvas>
         <div id="room-banner" class="room-banner" aria-live="polite"></div>
         <aside id="hud" class="hud" aria-live="polite"></aside>
-        <div id="overlay" class="overlay" hidden></div>
-      </div>
+        </div>
+      <div id="overlay" class="overlay" hidden></div>
+      <div id="lobby" class="lobby" hidden></div>
 
       <!-- PANEL INFERIOR DE PROGRESO (IMAGEN 1) -->
       <section class="progress-panel">
@@ -40,8 +41,7 @@
           </div>
           <div class="fragment-slots" id="fragment-slots"></div>
           <div class="fragments-footer">
-            <span class="collectibles-label" id="collectibles-label">Coleccionables · 0 de 10</span>
-            <button type="button" id="reset-button" class="btn-reset">Reiniciar</button>
+            <span class="collectibles-label" id="collectibles-label">Sin señales recibidas</span>
           </div>
         </div>
       </section>
@@ -57,6 +57,6 @@
         <button type="button" data-key="arrowdown">▼</button>
       </div>
     </main>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="/src/game/main.ts"></script>
   </body>
 </html>

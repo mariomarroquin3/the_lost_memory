@@ -2,6 +2,7 @@ import './style.css';
 import { createGameState, type GameState } from './gameState';
 import { loadGameState, saveGameState, clearGameState } from './state/storage';
 import { CanvasGame, ROOM_WIDTH, ROOM_HEIGHT } from './engine/canvasGame';
+import { MAP_HEIGHT, MAP_WIDTH, ROOM_LAYOUT, isRoomAt, roomOrigin } from './engine/roomLayout';
 import type { Rect, RoomMap } from './engine/types';
 import { Hud } from './ui/hud';
 import { openRoom1Panel } from './ui/room1Panel';
@@ -23,38 +24,51 @@ const music = new Music();
 const roomBanner = document.querySelector<HTMLElement>('#room-banner');
 
 const TOTAL_ROOMS = 10;
-const mapWidth = TOTAL_ROOMS * ROOM_WIDTH;
+const mapWidth = MAP_WIDTH;
+const mapHeight = MAP_HEIGHT;
 
 // Generar muros y colisiones de las 10 salas del complejo
 const solids: Rect[] = [
   // Muro superior
   { x: 0, y: 0, width: mapWidth, height: 44 },
   // Muro inferior (estanterías de archivo continuas)
-  { x: 0, y: ROOM_HEIGHT - 44, width: mapWidth, height: 44 },
+  { x: 0, y: mapHeight - 16, width: mapWidth, height: 16 },
   // Extremos del complejo
   { x: 0, y: 0, width: 16, height: ROOM_HEIGHT },
-  { x: mapWidth - 16, y: 0, width: 16, height: ROOM_HEIGHT },
+  { x: mapWidth - 16, y: 0, width: 16, height: mapHeight },
 ];
 
-for (let r = 0; r < TOTAL_ROOMS; r++) {
-  const rx = r * ROOM_WIDTH;
-  // Terminal CRT de cómputo
-  solids.push({ x: rx + 296, y: 52, width: 32, height: 26 });
-  // Racks de servidores
-  solids.push({ x: rx + 44, y: 44, width: 60, height: 42 });
-  // Caja de suministros con refuerzo en X
-  solids.push({ x: rx + 450, y: 180, width: 24, height: 24 });
-
-  // Muros divisorios entre salas (dejando puerta central de y: 134 a 250 abierta)
-  if (r < TOTAL_ROOMS - 1) {
-    solids.push({ x: rx + ROOM_WIDTH - 8, y: 44, width: 16, height: 90 });
-    solids.push({ x: rx + ROOM_WIDTH - 8, y: 250, width: 16, height: ROOM_HEIGHT - 250 });
+const addSegments = (axis: 'horizontal' | 'vertical', x: number, y: number, length: number, openingStart: number, openingSize: number): void => {
+  const first = openingStart;
+  const second = openingStart + openingSize;
+  if (axis === 'horizontal') {
+    if (first > 0) solids.push({ x, y, width: first, height: 16 });
+    if (length > second) solids.push({ x: x + second, y, width: length - second, height: 16 });
+  } else {
+    if (first > 0) solids.push({ x, y, width: 16, height: first });
+    if (length > second) solids.push({ x, y: y + second, width: 16, height: length - second });
   }
+};
+
+for (let room = 1; room <= TOTAL_ROOMS; room += 1) {
+  const { x: rx, y: ry } = roomOrigin(room);
+  const { col, row } = ROOM_LAYOUT[room];
+  solids.push({ x: rx + 296, y: ry + 52, width: 32, height: 26 });
+  solids.push({ x: rx + 44, y: ry + 44, width: 60, height: 42 });
+  solids.push({ x: rx + 450, y: ry + 180, width: 24, height: 24 });
+
+  // Paredes exteriores de cada celda; si hay vecino se deja una puerta.
+  if (!isRoomAt(col - 1, row)) solids.push({ x: rx, y: ry, width: 16, height: ROOM_HEIGHT });
+  if (!isRoomAt(col + 1, row)) solids.push({ x: rx + ROOM_WIDTH - 16, y: ry, width: 16, height: ROOM_HEIGHT });
+  else addSegments('vertical', rx + ROOM_WIDTH - 8, ry, ROOM_HEIGHT, 134, 116);
+  if (!isRoomAt(col, row - 1)) solids.push({ x: rx, y: ry, width: ROOM_WIDTH, height: 16 });
+  if (!isRoomAt(col, row + 1)) solids.push({ x: rx, y: ry + ROOM_HEIGHT - 16, width: ROOM_WIDTH, height: 16 });
+  else addSegments('horizontal', rx, ry + ROOM_HEIGHT - 8, ROOM_WIDTH, 248, 144);
 }
 
 const map: RoomMap = {
   width: mapWidth,
-  height: ROOM_HEIGHT,
+  height: mapHeight,
   solids,
 };
 
@@ -96,8 +110,9 @@ const engine = new CanvasGame(canvas, map, {
 });
 
 // Posicionar a Kiro en la sala activa
-engine.player.x = (state.currentRoom - 1) * ROOM_WIDTH + 312;
-engine.player.y = 200;
+const startOrigin = roomOrigin(state.currentRoom);
+engine.player.x = startOrigin.x + 312;
+engine.player.y = startOrigin.y + 200;
 
 const openOverlay = (open: () => void): void => {
   engine.setPaused(true);

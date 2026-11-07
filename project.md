@@ -157,7 +157,7 @@ La dirección visual está basada en las ideas de `SKILL_designs.md` y las refer
 - PC de control con estilo terminal verde.
 - Glitch cuando la alerta global alcanza niveles críticos.
 
-No se incorporaron las imágenes de referencia como assets; solo se retomaron sus ideas de composición, color y UI.
+No se incorporaron las imágenes de referencia como assets ni se copiaron sus objetos. Solo se retomaron el contraste, la composición cenital, la escala pixel-art, la iluminación y la jerarquía de UI. Los props actuales son propios de Genesis: prismas de memoria, columnas holográficas, nodos de fibra, cápsulas de contención y fragmentos de señal.
 
 ## 9. Interfaz y controles
 
@@ -211,7 +211,19 @@ El build actual pasa correctamente con TypeScript y Vite.
 - Mantener puzzles y UI en HTML/CSS, no dibujar puzzles complejos en Canvas.
 - Usar `Kiro` como nombre del protagonista en todo texto nuevo.
 
-## 14. Estado actual
+## 14. Distribución espacial del mapa
+
+El mapa ya no es un corredor lineal. El complejo usa una cuadrícula física de 4 columnas por 3 filas:
+
+```text
+[01] [02] [03] [04]
+[05] [06] [07] [08]
+[  ] [09] [10] [  ]
+```
+
+Las salas tienen puertas laterales y verticales según sus vecinos. Las salas 9 y 10 ocupan la zona inferior central para que el recorrido pueda bajar, regresar y tomar rutas alternativas. El minimapa y el mapa de pantalla usan la misma distribución.
+
+## 15. Estado actual
 
 El vertical slice técnico está completo: movimiento, 10 zonas navegables, puzzles, HUD, estado persistente, mapa, PC de control, audio, controles táctiles, tres desenlaces y build de producción.
 

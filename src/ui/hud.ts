@@ -1,5 +1,6 @@
 import type { GameState } from '../gameState';
 import { ROOM_NAMES } from '../rooms/roomNames';
+import { ROOM_LAYOUT } from '../engine/roomLayout';
 
 const FRAGMENTS_LIST = [
   'identidad',
@@ -84,8 +85,9 @@ export class Hud {
         const isFound = Boolean(state.fragments[idx]);
         const numStr = String(roomNum).padStart(2, '0');
 
+        const position = ROOM_LAYOUT[roomNum];
         return `
-          <div class="minimap-cell ${isCurrent ? 'minimap-cell--current' : ''} ${isFound ? 'minimap-cell--found' : ''}">
+          <div class="minimap-cell ${isCurrent ? 'minimap-cell--current' : ''} ${isFound ? 'minimap-cell--found' : ''}" style="grid-column:${position.col + 1};grid-row:${position.row + 1}">
             <span>${numStr}</span>
           </div>
         `;
