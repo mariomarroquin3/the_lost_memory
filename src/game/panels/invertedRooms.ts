@@ -8,20 +8,20 @@ export function openTransition(ctx: PanelCtx): void {
   const chosen = new Set<number>();
   const root = panel(ctx, {
     id: 'transition', lesson,
-    title: 'PUERTA DE TRANSICIÓN // CAMBIO DE DOMINIO',
-    intro: 'El guardián entrenado en el Mundo Real vigila esta puerta, pero aquí falla: las tarjetas invertidas tienen otra distribución. Mira los histogramas y reentrénalo con como mucho 4 ejemplos nuevos del Mundo Invertido.',
+    title: 'PUERTA DE TRANSICIÓN // EL GUARDIÁN CONFUNDIDO',
+    intro: `El guardián deja pasar las tarjetas que quedan <b>a la derecha de su línea azul</b>.
+      <br><b>Arriba</b>: tarjetas del Mundo Real, donde aprendió. Ahí acierta.
+      <br><b>Abajo</b>: tarjetas de este mundo. Están corridas hacia la derecha y se equivoca (las <b style="color:#ff5a6e">✕</b>).
+      <br>Pulsa hasta <b>4 tarjetas grandes</b> de abajo para enseñárselas. Pista: elige las que están <b>en la frontera</b> entre las <b style="color:#ff5a6e">rojas</b> y las <b style="color:#4cc47a">verdes</b>: las 2 rojas más a la derecha y las 2 verdes más a la izquierda.`,
     body: `
-      <div class="comms-grid">
-        <div><canvas width="300" height="200" class="sim-canvas" data-hist></canvas></div>
-        <div>
-          <p class="rp-small">Ejemplos invertidos disponibles (valor del rasgo · etiqueta):</p>
-          <div class="chips">${d.pool.map((p, i) => `<button type="button" class="chip" data-p="${i}">${p.v.toFixed(2)} · ${p.label ? 'abre' : 'no abre'}</button>`).join('')}</div>
-          <p class="rp-small" data-acc></p>
-          <button type="button" class="btn-terminal" data-ok>Validar en la puerta</button>
-        </div>
-      </div>`,
+      <canvas width="560" height="290" class="sim-canvas" data-hist style="max-width:100%;cursor:pointer"></canvas>
+      <p class="rp-small"><b style="color:#4cc47a">●</b> abre · <b style="color:#ff5a6e">●</b> no abre · ◯ grande = tarjeta que puedes enseñarle · <b style="color:#00e5ff">│</b> línea del guardián</p>
+      <p data-acc style="font-size:12px"></p>
+      <div class="rp-row"><button type="button" class="btn-retro" data-reset>Empezar de nuevo</button><button type="button" class="btn-terminal" data-ok>Validar en la puerta</button></div>`,
   });
-  const hist = sim(root, '[data-hist]');
+  const g = sim(root, '[data-hist]');
+  const W = 560, L = 20, R = 20;
+  const sx = (v: number): number => L + v * (W - L - R);
   const threshold = (): number => {
     const extra = [...chosen].map((i) => d.pool[i]);
     if (!extra.length) return 0.5;
@@ -31,36 +31,99 @@ export function openTransition(ctx: PanelCtx): void {
     const hi = ones.length ? Math.min(...ones) : Math.max(lo + 0.1, 0.5);
     return (lo + hi) / 2;
   };
-  const acc = (set: Array<{ v: number; label: number }>, t: number): number => set.filter((p) => (p.v > t ? 1 : 0) === p.label).length / set.length;
-  const draw = (): void => {
-    hist.fillStyle = '#0b0910';
-    hist.fillRect(0, 0, 300, 200);
-    const bins = (set: Array<{ v: number }>, y0: number, color: string, name: string): void => {
-      const counts = Array(10).fill(0);
-      set.forEach((p) => counts[Math.min(9, Math.floor(p.v * 10))]++);
-      counts.forEach((c, i) => { hist.fillStyle = color; hist.fillRect(10 + i * 28, y0 - c * 8, 24, c * 8); });
-      hist.fillStyle = '#ece3d6';
-      hist.font = '9px monospace';
-      hist.fillText(name, 10, y0 + 12);
-    };
-    bins(d.real, 85, '#f7931a', 'Datos REALES');
-    bins(d.inverted, 180, '#a46cff', 'Datos INVERTIDOS');
-    const t = threshold();
-    hist.strokeStyle = '#00e5ff';
-    hist.beginPath(); hist.moveTo(10 + t * 280, 0); hist.lineTo(10 + t * 280, 190); hist.stroke();
-    root.querySelector('[data-acc]')!.innerHTML = `Umbral: ${t.toFixed(2)} · precisión REAL <b>${Math.round(acc(d.real, t) * 100)}%</b> · precisión INVERTIDA <b>${Math.round(acc(d.inverted, t) * 100)}%</b> · ejemplos nuevos ${chosen.size}/4`;
-    root.querySelectorAll<HTMLElement>('[data-p]').forEach((b) => b.classList.toggle('chip--on', chosen.has(Number(b.dataset.p))));
+  const wrong = (set: Array<{ v: number; label: number }>, t: number): number => set.filter((p) => (p.v > t ? 1 : 0) !== p.label).length;
+  // Fila en la que cae cada tarjeta para que no se tapen.
+  const lanes = (set: Array<{ v: number }>): number[] => {
+    const used: number[][] = [];
+    return set.map((p) => {
+      const x = sx(p.v);
+      let lane = 0;
+      while ((used[lane] ?? []).some((u) => Math.abs(u - x) < 9)) lane++;
+      (used[lane] ??= []).push(x);
+      return lane;
+    });
   };
-  root.querySelectorAll<HTMLButtonElement>('[data-p]').forEach((b) => b.addEventListener('click', () => {
-    const i = Number(b.dataset.p);
-    if (chosen.has(i)) chosen.delete(i); else if (chosen.size < 4) chosen.add(i);
+  const realLanes = lanes(d.real);
+  const invLanes = lanes(d.inverted);
+  const placed: Array<{ x: number; y: number }> = [];
+  const poolPos = d.pool.map((p, i) => {
+    const x = sx(p.v);
+    let y = 212;
+    while (placed.some((q) => q.y === y && Math.abs(q.x - x) < 18)) y += 18;
+    placed.push({ x, y });
+    return { x, y, i };
+  });
+  const draw = (): void => {
+    const t = threshold();
+    g.fillStyle = '#0b0910';
+    g.fillRect(0, 0, W, 290);
+    // Zonas
+    g.fillStyle = 'rgba(76,196,122,.07)';
+    g.fillRect(sx(t), 0, W - sx(t), 290);
+    g.fillStyle = '#ece3d6';
+    g.font = 'bold 11px monospace';
+    g.fillText('MUNDO REAL (aprendió aquí)', L, 14);
+    g.fillText('MUNDO INVERTIDO (aquí)', L, 120);
+    g.fillStyle = '#9d93a9';
+    g.font = '10px monospace';
+    g.fillText('← no abre', sx(t) - 70, 112);
+    g.fillText('abre →', sx(t) + 8, 112);
+    g.strokeStyle = '#2a2236';
+    for (const y of [92, 196]) { g.beginPath(); g.moveTo(L, y + 0.5); g.lineTo(W - R, y + 0.5); g.stroke(); }
+    const dot = (p: { v: number; label: number }, y: number): void => {
+      const x = sx(p.v);
+      const bad = (p.v > t ? 1 : 0) !== p.label;
+      g.fillStyle = p.label ? '#4cc47a' : '#ff5a6e';
+      g.beginPath(); g.arc(x, y, 4, 0, Math.PI * 2); g.fill();
+      if (bad) {
+        g.strokeStyle = '#ffffff';
+        g.lineWidth = 1.5;
+        g.beginPath(); g.moveTo(x - 4, y - 4); g.lineTo(x + 4, y + 4); g.moveTo(x + 4, y - 4); g.lineTo(x - 4, y + 4); g.stroke();
+        g.lineWidth = 1;
+      }
+    };
+    d.real.forEach((p, i) => dot(p, 84 - realLanes[i] * 10));
+    d.inverted.forEach((p, i) => dot(p, 188 - invLanes[i] * 10));
+    // Tarjetas para enseñar
+    for (const pp of poolPos) {
+      const p = d.pool[pp.i];
+      const on = chosen.has(pp.i);
+      g.strokeStyle = p.label ? '#4cc47a' : '#ff5a6e';
+      g.lineWidth = on ? 3 : 2;
+      g.fillStyle = on ? (p.label ? '#4cc47a' : '#ff5a6e') : '#0b0910';
+      g.beginPath(); g.arc(pp.x, pp.y, 8, 0, Math.PI * 2); g.fill(); g.stroke();
+      g.lineWidth = 1;
+    }
+    g.fillStyle = '#9d93a9';
+    g.fillText('↑ tarjetas para enseñarle (púlsalas)', L, 284);
+    // Línea del guardián
+    g.strokeStyle = '#00e5ff';
+    g.lineWidth = 2;
+    g.beginPath(); g.moveTo(sx(t), 20); g.lineTo(sx(t), 272); g.stroke();
+    g.lineWidth = 1;
+    const errInv = wrong(d.inverted, t);
+    const ok = errInv <= 4;
+    root.querySelector('[data-acc]')!.innerHTML = `Errores aquí: <b style="color:${ok ? '#4cc47a' : '#ff5a6e'}">${errInv} de ${d.inverted.length}</b> (máximo 4) · errores en el Mundo Real: ${wrong(d.real, t)} · tarjetas enseñadas: <b>${chosen.size} de 4</b>`;
+  };
+  (g.canvas as HTMLCanvasElement).addEventListener('click', (ev) => {
+    const c = g.canvas as HTMLCanvasElement;
+    const r = c.getBoundingClientRect();
+    const mx = ((ev.clientX - r.left) / r.width) * W;
+    const my = ((ev.clientY - r.top) / r.height) * 290;
+    const hit = poolPos.filter((pp) => Math.hypot(pp.x - mx, pp.y - my) < 12).sort((a, b) => Math.abs(a.x - mx) - Math.abs(b.x - mx))[0];
+    if (!hit) return;
+    if (chosen.has(hit.i)) chosen.delete(hit.i);
+    else if (chosen.size < 4) chosen.add(hit.i);
+    else { say(root, 'Solo puedes enseñarle 4. Quita una pulsándola otra vez.'); return; }
+    say(root, '');
     draw();
-  }));
+  });
+  root.querySelector('[data-reset]')?.addEventListener('click', () => { chosen.clear(); draw(); });
   draw();
   root.querySelector('[data-ok]')?.addEventListener('click', () => {
-    const a = acc(d.inverted, threshold());
-    if (a >= 0.85) win(ctx, root, 'transition', lesson);
-    else say(root, `Precisión invertida ${Math.round(a * 100)}%. Elige ejemplos cerca de donde se mezclan las dos clases.`);
+    const errInv = wrong(d.inverted, threshold());
+    if (errInv <= 4) win(ctx, root, 'transition', lesson);
+    else say(root, `Todavía se equivoca ${errInv} veces. Enséñale las tarjetas de la frontera: las rojas más a la derecha y las verdes más a la izquierda.`);
   });
 }
 

@@ -22,7 +22,7 @@ const shuffle = <T>(rand: () => number, list: T[]): T[] => {
   return out;
 };
 
-// ---------- Sala 1: la cinta que clasifica ----------
+// ---------- Sala 1: la cinta que aprende (regresión lineal) ----------
 export const COLORS = [
   { name: 'ROJO', hex: '#e05252' },
   { name: 'NARANJA', hex: '#f7931a' },
@@ -32,37 +32,49 @@ export const COLORS = [
   { name: 'VIOLETA', hex: '#a46cff' },
 ];
 
-export interface Piece { id: number; shape: 'llave' | 'cable'; edges: number; color: number; texture: 'lisa' | 'rugosa'; authorized: boolean; pixels: number[] }
-
-function pieceBitmap(shape: 'llave' | 'cable', edges: number): number[] {
-  // 8x8: 1 = cuerpo. Las "muescas" suman bordes.
-  const base = shape === 'llave'
-    ? ['01110000', '01010000', '01110000', '00100000', '00111000', '00100000', '00110000', '00100000']
-    : ['00111000', '01000100', '01000100', '00101000', '00010000', '00100000', '00110000', '00100000'];
-  const px = base.join('').split('').map(Number);
-  const notchSlots = [29, 30, 37, 45, 46, 53, 61, 62, 22];
-  for (let i = 0; i < Math.min(edges - 3, notchSlots.length); i++) px[notchSlots[i]] = 1;
-  return px;
+/** Ajuste por mínimos cuadrados de peso = w · tamaño + b. */
+export function fitLine(points: Array<{ x: number; y: number }>): { w: number; b: number } {
+  const n = points.length;
+  const mx = points.reduce((a, p) => a + p.x, 0) / n;
+  const my = points.reduce((a, p) => a + p.y, 0) / n;
+  let num = 0;
+  let den = 0;
+  for (const p of points) { num += (p.x - mx) * (p.y - my); den += (p.x - mx) ** 2; }
+  const w = den ? num / den : 0;
+  return { w, b: my - w * mx };
 }
 
+export interface Reading { id: number; x: number; y: number; fake: boolean }
+
+/** Código corto de la partida para comprobar que los dos jugadores ven los mismos datos. */
+export function batchCode(seed: number): string {
+  return 'L-' + ((seed >>> 0) % 46656).toString(36).toUpperCase().padStart(3, '0');
+}
+
+/** Sala 1: lecturas del escáner (tamaño en cm → peso en kg). Tres las inyectó el Alucinador. */
 export function room1Data(seed: number) {
   const rand = rng(seed * 7 + 1);
-  const minEdges = 4 + Math.floor(rand() * 3); // 4..6
-  const color = Math.floor(rand() * COLORS.length);
-  const texture: 'lisa' | 'rugosa' = rand() > 0.5 ? 'lisa' : 'rugosa';
-  const pieces: Piece[] = [];
-  const kinds = shuffle(rand, ['ok', 'ok', 'ok', 'badEdges', 'badColor', 'badTexture']);
-  kinds.forEach((kind, i) => {
-    const shape: 'llave' | 'cable' = rand() > 0.5 ? 'llave' : 'cable';
-    let edges = minEdges + Math.floor(rand() * 3);
-    let c = color;
-    let tex = texture;
-    if (kind === 'badEdges') edges = minEdges - 1 - Math.floor(rand() * 2);
-    if (kind === 'badColor') c = (color + 1 + Math.floor(rand() * 2)) % COLORS.length;
-    if (kind === 'badTexture') tex = texture === 'lisa' ? 'rugosa' : 'lisa';
-    pieces.push({ id: i + 1, shape, edges, color: c, texture: tex, authorized: kind === 'ok', pixels: pieceBitmap(shape, edges) });
+  const w = pick(rand, [1, 1.5, 2, 2.5, 3]);
+  const b = pick(rand, [1, 2, 3, 4, 5]);
+  const base = Array.from({ length: 10 }, (_, i) => {
+    const x = i + 1;
+    return { id: x, x, y: Math.round((w * x + b + (rand() - 0.5) * 1.2) * 10) / 10 };
   });
-  return { minEdges, color, texture, pieces };
+  let readings: Reading[] = [];
+  for (let tries = 0; tries < 20; tries++) {
+    const fakes = shuffle(rand, base.map((p) => p.id)).slice(0, 3);
+    readings = base.map((p) => (fakes.includes(p.id)
+      ? { ...p, fake: true, y: Math.round((p.y + (rand() > 0.35 ? 1 : -1) * (6 + rand() * 4)) * 10) / 10 }
+      : { ...p, fake: false }));
+    // Las lecturas falsas tienen que desviar la recta lo bastante para que se note.
+    const all = fitLine(readings);
+    const real = readings.filter((p) => !p.fake);
+    const fit = fitLine(real);
+    const mse = (w2: number, b2: number): number => real.reduce((a, p) => a + (w2 * p.x + b2 - p.y) ** 2, 0) / real.length;
+    if (mse(all.w, all.b) > mse(fit.w, fit.b) + 1.5) break;
+  }
+  const fit = fitLine(readings.filter((p) => !p.fake));
+  return { w, b, readings, fit, fakeIds: readings.filter((p) => p.fake).map((p) => p.id) };
 }
 
 // ---------- Sala 2: entrena al guardián ----------
@@ -132,7 +144,7 @@ export const OPS = [
 export function room4Data(seed: number) {
   const rand = rng(seed * 7 + 4);
   // El orden correcto siempre es el pipeline real, pero los glifos se barajan por partida.
-  const glyphs = shuffle(rand, ['Δ', 'Ω', 'Σ', 'Φ', 'Ψ', 'Λ']).slice(0, 4);
+  const glyphs = shuffle(rand, ['K', 'M', 'Q', 'X', 'Z', 'W']).slice(0, 4);
   const ops = OPS.map((op, i) => ({ ...op, glyph: glyphs[i] }));
   return { ops, order: ops.map((o) => o.id) };
 }
@@ -154,7 +166,11 @@ export function transitionData(seed: number) {
     const label = i % 2;
     return { v: label ? 0.82 + rand() * 0.16 : 0.45 + rand() * 0.3, label };
   });
-  const pool = shuffle(rand, inverted).slice(0, 8);
+  // Siempre hay en el montón la roja más a la derecha y la verde más a la izquierda: la frontera se puede enseñar.
+  const reds = inverted.filter((p) => !p.label).sort((a, b) => b.v - a.v);
+  const greens = inverted.filter((p) => p.label).sort((a, b) => a.v - b.v);
+  const edge = [reds[0], greens[0]];
+  const pool = shuffle(rand, [...edge, ...shuffle(rand, inverted.filter((p) => !edge.includes(p))).slice(0, 6)]);
   return { real, inverted, pool };
 }
 

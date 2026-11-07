@@ -1,5 +1,5 @@
 export type World = 'real' | 'inverted';
-export type Encoding = 'none' | 'rep3' | 'parity';
+export type Encoding = 'none' | 'rep3';
 export type Ending = 'lia' | 'new-genesis' | 'lost';
 
 export interface Signal {
@@ -25,6 +25,7 @@ export interface SharedState {
   connected: Record<World, boolean>;
   ending: Ending | null;
   alert: number;
+  channelOpeningSeen: boolean;
 }
 
 export interface PublicState extends SharedState {
@@ -35,6 +36,7 @@ export interface PublicState extends SharedState {
 export type Action =
   | { type: 'pos'; room: number }
   | { type: 'reveal-comms' }
+  | { type: 'mark-channel-opening-seen' }
   | { type: 'solve'; id: string }
   | { type: 'signal'; message: string; encoding: Encoding }
   | { type: 'verify'; code: string }
@@ -48,14 +50,13 @@ export function randomCode(length: number, rand?: () => number): string;
 export function createState(seed?: number): SharedState;
 export function channelActive(state: SharedState): boolean;
 export function fragmentCount(state: SharedState): number;
-export function encodeSymbol(symbol: string, encoding: Encoding): number[];
-export function decodeSymbol(bits: number[], encoding: Encoding): string;
+export const WALL: string;
 export function transmit(
   message: string,
   encoding: Encoding,
   noise: number,
   rand?: () => number,
-): { received: string; sentBits: number[]; receivedBits: number[]; flipped: number };
+): { received: string; flashes: number; wrong: number };
 export function sanitizeMessage(text: unknown): string;
 export function reduce(state: SharedState, world: World, action: Action): boolean;
 export function publicState(state: SharedState): PublicState;

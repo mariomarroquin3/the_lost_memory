@@ -1,87 +1,122 @@
-import { COLORS, DOCS, QUESTIONS, room1Data, room2Data, room3Data, room4Data, room5Data, type Card } from '../puzzleData';
+import { DOCS, QUESTIONS, batchCode, fitLine, room1Data, room2Data, room3Data, room4Data, room5Data, type Card } from '../puzzleData';
 import { $, panel, say, sim, win, type PanelCtx } from './common';
 
-// ======================= SALA 1 · LA CINTA QUE CLASIFICA =======================
+// ======================= SALA 1 · LA CINTA QUE APRENDE =======================
 export function openRoom1(ctx: PanelCtx): void {
   const d = room1Data(ctx.seed);
-  const lesson = 'la IA no ve objetos, ve rasgos numéricos.';
+  const lesson = 'un modelo aprende ajustando un peso (w) y un sesgo (b) para reducir el error, y los datos falsos lo desvían.';
+  const dropped = new Set<number>();
+  let w = 0.5;
+  let b = 0;
+  let steps = 0;
   const root = panel(ctx, {
     id: 'r1', lesson,
-    title: 'SALA 1 // LA CINTA QUE CLASIFICA',
-    intro: 'La cinta trae piezas de la fábrica. Algunas son del Alucinador y se parecen mucho a las buenas. El visor de cámara muestra lo que «ve» el clasificador: rasgos numéricos. El catálogo de rasgos correctos está en el Mundo Invertido.',
+    title: 'SALA 1 // LA CINTA QUE APRENDE',
+    intro: `El escáner predice el peso de cada pieza a partir de su tamaño con la recta <b>peso = w · tamaño + b</b>. Tres de los puntos son <b>lecturas falsas</b> del Alucinador y tuercen la recta.<br>
+      <b>1.</b> El otro jugador tiene el <b>Registro del escáner</b> en la Puerta de transición (Mundo Invertido): le dice qué números son falsos. Comprobad que los dos veis el lote <b>${batchCode(ctx.seed)}</b>; los datos cambian en cada partida.<br>
+      <b>2.</b> Haz clic en esos puntos para descartarlos. <b>3.</b> Ajusta w y b (o usa el descenso de gradiente) y pulsa <b>Calibrar escáner</b>.`,
     body: `
       <div class="comms-grid">
         <div>
-          <h3>Visor de cámara</h3>
-          <canvas width="160" height="160" class="sim-canvas pix" data-cam></canvas>
-          <div class="rp-row">
-            <label class="rp-small"><input type="radio" name="f" value="raw" checked> Imagen</label>
-            <label class="rp-small"><input type="radio" name="f" value="edges"> Filtro de bordes</label>
-            <label class="rp-small"><input type="radio" name="f" value="color"> Filtro de color</label>
-          </div>
-          <label class="rp-small">Resolución <input type="range" min="0" max="2" value="0" data-res></label>
-          <label class="rp-small">Ruido <input type="range" min="0" max="80" value="0" data-noise></label>
-          <p class="rp-small" data-readout></p>
+          <h3>Escáner de la cinta</h3>
+          <canvas width="300" height="220" class="sim-canvas" data-plot style="cursor:pointer;max-width:100%"></canvas>
+          <p class="rp-small" data-formula></p>
         </div>
         <div>
-          <h3>Piezas en la cinta</h3>
-          <div class="piece-list">${d.pieces.map((p) => `
-            <div class="piece" data-piece="${p.id}">
-              <button type="button" class="btn-retro" data-view="${p.id}">Pieza ${p.id}</button>
-              <select class="late-room__select" data-class="${p.id}">
-                <option value="">¿?</option><option value="1">Autorizada</option><option value="0">Alucinador</option>
-              </select>
-            </div>`).join('')}
-          </div>
-          <button type="button" class="btn-terminal" data-check>Clasificar lote</button>
+          <h3>Calibración</h3>
+          <label class="rp-small">Peso w <b data-wv></b><input type="range" min="0" max="4" step="0.05" data-w></label>
+          <label class="rp-small">Sesgo b <b data-bv></b><input type="range" min="-3" max="9" step="0.1" data-b></label>
+          <p class="rp-small" data-err></p>
+          <button type="button" class="btn-retro" data-gd>Descenso de gradiente (25 pasos)</button>
+          <p class="rp-small">Lecturas descartadas: <b data-drop>ninguna</b></p>
+          <button type="button" class="btn-terminal" data-check>Calibrar escáner</button>
         </div>
       </div>`,
   });
-  const cam = sim(root, '[data-cam]');
-  let current = d.pieces[0];
+  const g = sim(root, '[data-plot]');
+  const W = 300, H = 220, L = 30, B = 22;
+  const xmax = 11;
+  const ymax = Math.max(...d.readings.map((p) => p.y)) + 3;
+  const ymin = Math.min(0, ...d.readings.map((p) => p.y)) - 1;
+  const sx = (x: number): number => L + (x / xmax) * (W - L - 8);
+  const sy = (y: number): number => H - B - ((y - ymin) / (ymax - ymin)) * (H - B - 8);
+  const used = () => d.readings.filter((p) => !dropped.has(p.id));
+  const mse = (pts: Array<{ x: number; y: number }>): number => pts.reduce((a, p) => a + (w * p.x + b - p.y) ** 2, 0) / Math.max(1, pts.length);
+  const wIn = $(root, '[data-w]');
+  const bIn = $(root, '[data-b]');
   const draw = (): void => {
-    const filter = (root.querySelector('input[name="f"]:checked') as HTMLInputElement).value;
-    const res = [8, 4, 2][Number($(root, '[data-res]').value)];
-    const noise = Number($(root, '[data-noise]').value) / 100;
-    const color = COLORS[current.color].hex;
-    const px = current.pixels;
-    const cell = 160 / res;
-    const step = 8 / res;
-    cam.fillStyle = '#0b0910';
-    cam.fillRect(0, 0, 160, 160);
-    for (let y = 0; y < res; y++) for (let x = 0; x < res; x++) {
-      let on = 0;
-      for (let yy = 0; yy < step; yy++) for (let xx = 0; xx < step; xx++) on += px[(y * step + yy) * 8 + x * step + xx];
-      let v = on / (step * step);
-      if (Math.random() < noise) v = Math.random();
-      if (filter === 'edges') {
-        const i = y * step * 8 + x * step;
-        const edge = res === 8 && px[i] && (!px[i - 1] || !px[i + 1] || !px[i - 8] || !px[i + 8]);
-        cam.fillStyle = edge || (res < 8 && v > 0.2 && v < 0.8) ? '#ece3d6' : '#1b1622';
-      } else if (filter === 'color') {
-        cam.fillStyle = v > 0.4 ? color : '#1b1622';
-        if (v > 0.4 && Math.random() < noise) cam.fillStyle = COLORS[Math.floor(Math.random() * 6)].hex;
-      } else {
-        cam.fillStyle = v > 0.4 ? color : '#231b2c';
-        if (v > 0.4 && current.texture === 'rugosa' && (x + y) % 2 === 0) cam.fillStyle = '#4a515c';
-      }
-      cam.fillRect(x * cell, y * cell, cell - 1, cell - 1);
+    g.fillStyle = '#0b0910';
+    g.fillRect(0, 0, W, H);
+    g.strokeStyle = '#2a2236';
+    g.lineWidth = 1;
+    for (let x = 0; x <= 10; x += 2) { g.beginPath(); g.moveTo(sx(x) + 0.5, 8); g.lineTo(sx(x) + 0.5, H - B); g.stroke(); }
+    g.fillStyle = '#9d93a9';
+    g.font = '9px monospace';
+    g.fillText('tamaño (cm) →', W - 90, H - 6);
+    g.fillText('peso', 2, 12);
+    for (let x = 0; x <= 10; x += 2) g.fillText(String(x), sx(x) - 3, H - B + 11);
+    // residuos
+    for (const p of used()) {
+      g.strokeStyle = 'rgba(224,82,82,.6)';
+      g.beginPath(); g.moveTo(sx(p.x), sy(p.y)); g.lineTo(sx(p.x), sy(w * p.x + b)); g.stroke();
     }
-    const reliable = res === 8 && noise <= 0.3;
-    root.querySelector('[data-readout]')!.innerHTML = reliable
-      ? `Rasgos de la pieza ${current.id}: BORDES = <b>${current.edges}</b> · COLOR = <b>${COLORS[current.color].name}</b> · TEXTURA = <b>${current.texture.toUpperCase()}</b>`
-      : `Rasgos de la pieza ${current.id}: BORDES = ? · COLOR = ? · TEXTURA = ? <span class="bad">(con poca resolución o mucho ruido el clasificador no distingue)</span>`;
+    // recta del modelo
+    g.strokeStyle = '#00e5ff';
+    g.lineWidth = 2;
+    g.beginPath(); g.moveTo(sx(0), sy(b)); g.lineTo(sx(xmax), sy(w * xmax + b)); g.stroke();
+    g.lineWidth = 1;
+    for (const p of d.readings) {
+      const off = dropped.has(p.id);
+      g.fillStyle = off ? '#3b3346' : '#f7931a';
+      g.fillRect(sx(p.x) - 3, sy(p.y) - 3, 6, 6);
+      g.fillStyle = off ? '#5a5066' : '#ece3d6';
+      g.fillText(String(p.id), sx(p.x) + 5, sy(p.y) - 4);
+      if (off) {
+        g.strokeStyle = '#e05252';
+        g.beginPath(); g.moveTo(sx(p.x) - 5, sy(p.y) - 5); g.lineTo(sx(p.x) + 5, sy(p.y) + 5); g.moveTo(sx(p.x) + 5, sy(p.y) - 5); g.lineTo(sx(p.x) - 5, sy(p.y) + 5); g.stroke();
+      }
+    }
+    wIn.value = String(w);
+    bIn.value = String(b);
+    root.querySelector('[data-wv]')!.textContent = w.toFixed(2);
+    root.querySelector('[data-bv]')!.textContent = b.toFixed(2);
+    root.querySelector('[data-formula]')!.innerHTML = `peso = <b>${w.toFixed(2)}</b> · tamaño + <b>${b.toFixed(2)}</b>`;
+    root.querySelector('[data-err]')!.innerHTML = `Error cuadrático medio con ${used().length} lecturas: <b>${mse(used()).toFixed(2)}</b>${steps ? ` · ${steps} pasos de gradiente` : ''}`;
+    root.querySelector('[data-drop]')!.textContent = dropped.size ? [...dropped].sort((x, y) => x - y).join(', ') : 'ninguna';
   };
-  root.querySelectorAll<HTMLButtonElement>('[data-view]').forEach((b) => b.addEventListener('click', () => {
-    current = d.pieces[Number(b.dataset.view) - 1];
+  wIn.addEventListener('input', () => { w = Number(wIn.value); draw(); });
+  bIn.addEventListener('input', () => { b = Number(bIn.value); draw(); });
+  (g.canvas as HTMLCanvasElement).addEventListener('click', (ev) => {
+    const r = (g.canvas as HTMLCanvasElement).getBoundingClientRect();
+    const mx = ((ev.clientX - r.left) / r.width) * W;
+    const my = ((ev.clientY - r.top) / r.height) * H;
+    const hit = d.readings.find((p) => Math.hypot(sx(p.x) - mx, sy(p.y) - my) < 9);
+    if (!hit) return;
+    if (dropped.has(hit.id)) dropped.delete(hit.id); else dropped.add(hit.id);
     draw();
-  }));
-  root.querySelectorAll('input[name="f"], [data-res], [data-noise]').forEach((el) => el.addEventListener('input', draw));
+  });
+  root.querySelector('[data-gd]')?.addEventListener('click', () => {
+    const pts = used();
+    for (let i = 0; i < 25; i++) {
+      let gw = 0, gb = 0;
+      for (const p of pts) { const e = w * p.x + b - p.y; gw += (2 / pts.length) * e * p.x; gb += (2 / pts.length) * e; }
+      w -= 0.012 * gw;
+      b -= 0.05 * gb;
+    }
+    w = Math.max(0, Math.min(4, w));
+    b = Math.max(-3, Math.min(9, b));
+    steps += 25;
+    draw();
+  });
   draw();
   root.querySelector('[data-check]')?.addEventListener('click', () => {
-    const wrong = d.pieces.filter((p) => $(root, `[data-class="${p.id}"]`).value !== (p.authorized ? '1' : '0'));
-    if (wrong.length === 0) win(ctx, root, 'r1', lesson);
-    else say(root, `${wrong.length} pieza(s) mal clasificadas. Sin el catálogo del otro mundo es adivinar.`);
+    const real = d.readings.filter((p) => !p.fake);
+    const best = real.reduce((a, p) => a + (d.fit.w * p.x + d.fit.b - p.y) ** 2, 0) / real.length;
+    const ok = mse(real) <= best + 0.6;
+    if (ok) { win(ctx, root, 'r1', lesson); return; }
+    const all = fitLine(d.readings);
+    if (Math.abs(w - all.w) < 0.25 && Math.abs(b - all.b) < 1) say(root, 'La recta se ajusta a todas las lecturas… incluidas las falsas. Pide al otro mundo el registro del escáner.');
+    else say(root, 'La puerta no abre: el escáner sigue fallando. Baja el error moviendo w y b o usa el descenso de gradiente.');
   });
 }
 

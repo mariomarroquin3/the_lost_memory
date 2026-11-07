@@ -4,6 +4,8 @@ import { createState, publicState, reduce, WORLDS } from '../src/shared/reducer.
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const sessions = new Map();
+/** Máquina que atiende (en Fly.io). Si los dos jugadores ven ids distintos, hay más de una máquina. */
+const SERVER_ID = (process.env.FLY_MACHINE_ID || 'local').slice(0, 4);
 
 function newCode() {
   let code = '';
@@ -20,6 +22,27 @@ function broadcast(session) {
     if (socket && socket.readyState === socket.OPEN) socket.send(payload);
   }
 }
+
+/** Rehace una partida perdida (reinicio o deploy del servidor) con el estado que guarda el cliente. */
+function restore(code, snap) {
+  if (!snap || typeof snap !== 'object' || !Number.isFinite(snap.seed) || !Array.isArray(snap.solved)) return null;
+  const state = createState(snap.seed);
+  const bool2 = (v) => ({ real: Boolean(v?.real), inverted: Boolean(v?.inverted) });
+  state.solved = snap.solved.filter((id) => typeof id === 'string').slice(0, 20);
+  state.commsRevealed = bool2(snap.commsRevealed);
+  state.verified = bool2(snap.verified);
+  if (typeof snap.verifyCodes?.real === 'string' && typeof snap.verifyCodes?.inverted === 'string') {
+    state.verifyCodes = { real: snap.verifyCodes.real.slice(0, 4), inverted: snap.verifyCodes.inverted.slice(0, 4) };
+  }
+  if (Array.isArray(snap.signals)) state.signals = snap.signals.slice(-60).filter((x) => x && typeof x.id === 'string');
+  if (['lia', 'new-genesis', 'lost'].includes(snap.ending)) state.ending = snap.ending;
+  if (Number.isFinite(snap.alert)) state.alert = Math.max(5, Math.min(95, snap.alert));
+  const session = { code, state, sockets: { real: null, inverted: null }, tokens: { real: null, inverted: null }, emptySince: 0 };
+  sessions.set(code, session);
+  return session;
+}
+
+const token = () => Math.random().toString(36).slice(2, 12);
 
 function send(socket, message) {
   if (socket.readyState === socket.OPEN) socket.send(JSON.stringify(message));
@@ -49,26 +72,34 @@ export function attachLobby(httpServer) {
         let code = typeof msg.code === 'string' ? msg.code.toUpperCase().trim() : '';
         if (!code) {
           code = newCode();
-          sessions.set(code, { code, state: createState(), sockets: { real: null, inverted: null }, emptySince: 0 });
+          sessions.set(code, { code, state: createState(), sockets: { real: null, inverted: null }, tokens: { real: null, inverted: null }, emptySince: 0 });
         }
-        const target = sessions.get(code);
+        const target = sessions.get(code) ?? restore(code, msg.resume);
         if (!target) {
           send(ws, { type: 'error', message: `No existe la partida ${code}.` });
           return;
         }
         // Elegir mundo: el pedido si está libre (o si es una reconexión), si no el que quede libre.
         const free = WORLDS.filter((w) => !target.sockets[w] || target.sockets[w].readyState !== ws.OPEN);
-        const chosen = wanted && free.includes(wanted) ? wanted : free[0];
+        // Reconexión con su ficha: recupera su mundo aunque la conexión vieja siga colgada.
+        const mine = wanted && msg.token && (target.tokens[wanted] === msg.token || !target.tokens[wanted]) ? wanted : null;
+        const chosen = mine ?? (wanted && free.includes(wanted) ? wanted : free[0]);
         if (!chosen) {
           send(ws, { type: 'error', message: `La partida ${code} ya tiene dos jugadores.` });
           return;
         }
         session = target;
         world = chosen;
+        const old = session.sockets[world];
+        if (old && old !== ws) {
+          // Otra pestaña o PC entró con el mismo mundo: se avisa a la vieja para que no intente volver.
+          try { if (old.readyState === old.OPEN) old.send(JSON.stringify({ type: 'kicked' })); old.close(); } catch { /* ya cerrada */ }
+        }
         session.sockets[world] = ws;
+        if (!session.tokens[world] || session.tokens[world] !== msg.token) session.tokens[world] = token();
         session.state.connected[world] = true;
         session.emptySince = 0;
-        send(ws, { type: 'welcome', code, world });
+        send(ws, { type: 'welcome', code, world, token: session.tokens[world], server: SERVER_ID });
         broadcast(session);
         return;
       }

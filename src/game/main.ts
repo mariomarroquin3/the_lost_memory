@@ -2,13 +2,17 @@ import '../style.css';
 import './game.css';
 import { ROOMS, type Ending, type World } from '../shared/reducer.js';
 import { CoopSession, SoloSession, hasSoloSave, lastCoop, type Session } from './session';
-import { WorldEngine, ROOM_W, type Interactable } from './worldEngine';
-import { ROOM_INFO, WORLD_NAME, FRAGMENT_ORDER, clueFor, fragmentName } from './rooms';
+import { TileEngine } from './tileEngine';
+import type { Door, Thing } from '../p21/tilemap';
+import { ROOM_INFO, WORLD_NAME, FRAGMENT_ORDER, NEEDS, clueFor, fragmentName } from './rooms';
 import type { PanelCtx } from './panels/common';
 import { openComms, openHiddenPanel } from './panels/comms';
+import { guideHtml } from './panels/guide';
 import { openRoom1, openRoom2, openRoom3, openRoom4, openRoom5 } from './panels/realRooms';
 import { openRoom6, openRoom7, openRoom8, openRoom9, openRoom10, openTransition } from './panels/invertedRooms';
 import { Music } from '../audio/music';
+import { playOpening } from './opening';
+import { playChannelOpening } from './channelOpening';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const overlay = document.querySelector<HTMLElement>('#overlay')!;
@@ -18,9 +22,10 @@ const lobby = document.querySelector<HTMLElement>('#lobby')!;
 const music = new Music();
 
 let session: Session;
-let engine: WorldEngine;
+let engine: TileEngine;
 let refreshPanel: (() => void) | null = null;
 let shownEnding: Ending | null = null;
+let channelOpeningPlaying = false;
 
 // ============================== LOBBY ==============================
 function showLobby(error = ''): void {
@@ -70,20 +75,23 @@ function showLobby(error = ''): void {
 const roomsOf = (w: World): string[] => ROOMS[w];
 const solved = (id: string): boolean => session.state.solved.includes(id);
 
-function isOpen(boundary: number): boolean {
-  const w = session.world;
-  if (boundary === 0) return session.state.commsRevealed[w];
-  return solved(roomsOf(w)[boundary]);
+function isOpen(gate: string): boolean {
+  if (gate === 'hidden') return session.state.commsRevealed[session.world];
+  return solved(gate);
 }
 
-function interactables(index: number): Interactable[] {
-  const w = session.world;
-  const rx = index * ROOM_W;
-  const list: Interactable[] = [{ id: `main:${index}`, x: rx + 312, y: 92, label: index === 0 ? 'Consola de luces' : 'Terminal' }];
-  if (clueFor(w, index, session.state.seed)) list.push({ id: 'clue', x: rx + 580, y: 200, label: 'Pista' });
-  if (index === 1 && !session.state.commsRevealed[w]) list.push({ id: 'hidden-panel', x: rx + 28, y: 112, label: 'Rejilla' });
-  if (index === 0 && session.mode === 'solo') list.push({ id: 'switch', x: rx + 560, y: 300, label: 'Cambiar de mundo' });
-  return list;
+const roomName = (id: string): string => ROOM_INFO[session.world].find((r) => r.id === id)?.name ?? id;
+
+function toast(title: string, text: string): void {
+  overlay.hidden = false;
+  overlay.innerHTML = `<section class="puzzle crt-panel rp clue-card"><div class="puzzle__head"><h2>${title}</h2><button type="button" class="btn-retro" data-close>Cerrar (Esc)</button></div><p>${text}</p></section>`;
+  overlay.querySelector('[data-close]')?.addEventListener('click', closePanel);
+}
+
+function onBlocked(door: Door): void {
+  if (!door.gate || door.gate === 'hidden') return;
+  engine.setPaused(true);
+  toast('Puerta cerrada', `Se abrirá al resolver «${roomName(door.gate)}».`);
 }
 
 function panelCtx(): PanelCtx {
@@ -98,6 +106,13 @@ function panelCtx(): PanelCtx {
   };
 }
 
+function openGuide(): void {
+  engine.setPaused(true);
+  overlay.hidden = false;
+  overlay.innerHTML = guideHtml(session.world, session.mode === 'solo');
+  overlay.querySelector('[data-close]')?.addEventListener('click', closePanel);
+}
+
 function closePanel(): void {
   overlay.hidden = true;
   overlay.replaceChildren();
@@ -105,16 +120,20 @@ function closePanel(): void {
   engine.setPaused(false);
 }
 
-function onInteract(id: string): void {
+function onInteract(id: string, thing?: Thing): void {
   const w = session.world;
   const ctx = panelCtx();
   engine.setPaused(true);
+  if (id === 'info') {
+    if (thing?.info) toast(thing.info.title, thing.info.text); else engine.setPaused(false);
+    return;
+  }
   if (id === 'switch') { engine.setPaused(false); switchWorld(); return; }
   if (id === 'hidden-panel') { openHiddenPanel(ctx, () => session.dispatch({ type: 'reveal-comms' })); return; }
   if (id === 'clue') {
-    const clue = clueFor(w, engine.room, session.state.seed)!;
+    const clue = clueFor(w, roomsOf(w)[engine.room], session.state.seed)!;
     overlay.hidden = false;
-    overlay.innerHTML = `<section class="puzzle crt-panel rp clue-card"><div class="puzzle__head"><h2>${clue.title}</h2><button type="button" class="btn-retro" data-close>Cerrar (Esc)</button></div><p>${clue.body}</p><p class="rp-small">Esta información no existe en el otro mundo. Usa la sala de comunicaciones para transmitirla.</p></section>`;
+    overlay.innerHTML = `<section class="puzzle crt-panel rp clue-card"><div class="puzzle__head"><h2>${clue.title}</h2><button type="button" class="btn-retro" data-close>Cerrar (Esc)</button></div><p>${clue.body}</p>${clue.extra ?? ''}${clue.send && session.mode !== 'solo' ? `<p class="clue-send">Mándalo por la pared de luces así: <b>${clue.send}</b></p>` : ''}<p class="rp-small">${session.mode === 'solo' ? 'Recuérdala: la necesitarás al cambiar de mundo.' : 'El otro jugador no puede ver esto. Ve a la sala de comunicaciones y mándaselo.'}</p></section>`;
     overlay.querySelector('[data-close]')?.addEventListener('click', closePanel);
     return;
   }
@@ -171,7 +190,11 @@ function showEnding(ending: Ending): void {
 
 function switchWorld(): void {
   session.switchWorld?.();
-  engine.setWorld(session.world, roomsOf(session.world).length, 0);
+  // En solo, entrar directamente en comunicaciones puede dejar al jugador
+  // detrás de la puerta oculta del otro mundo. Si esa sala sigue oculta, aparece
+  // en la sala 1 (tiene el panel que la revela); si ya está abierta, junto al portal.
+  const hiddenThere = session.mode === 'solo' && !session.state.commsRevealed[session.world];
+  engine.setWorld(session.world, hiddenThere ? 1 : 0);
   document.body.dataset.world = session.world;
   render();
 }
@@ -186,6 +209,39 @@ function onRoomChanged(index: number): void {
   render();
 }
 
+/** Qué hacer ahora, en una frase, según dónde estás y qué falta. */
+function objective(): string {
+  const st = session.state;
+  const w = session.world;
+  const other: World = w === 'real' ? 'inverted' : 'real';
+  const here = roomsOf(w)[engine.room];
+  const entry = w === 'real' ? 'Recepción' : 'la Puerta de transición';
+  if (!st.commsRevealed[w]) {
+    return here === roomsOf(w)[1]
+      ? 'Un panel de la pared izquierda sopla aire: es un muro falso (flecha azul). Acércate y pulsa E.'
+      : `Vuelve a ${entry}: hay un muro falso en la pared izquierda.`;
+  }
+  if (session.mode === 'coop' && !st.channelActive) {
+    return here.startsWith('comms') ? 'Usa la pared de luces: manda tu clave y escribe la que te llegue.' : 'Ve a la sala de comunicaciones (a la izquierda de ' + entry + ') y usa la pared de luces.';
+  }
+  const need = NEEDS[here];
+  if (need && !st.solved.includes(here)) {
+    const clue = clueFor(need.world, need.room, st.seed);
+    const where = ROOM_INFO[need.world].find((r) => r.id === need.room)?.name ?? need.room;
+    const how = session.mode === 'solo' ? 'cambia de mundo con el portal' : 'pídela por el canal';
+    return `Esta sala necesita «${clue?.title}» de ${where} (${WORLD_NAME[need.world].toLowerCase()}): ${how}.`;
+  }
+  const mine = clueFor(w, here, st.seed);
+  const target = Object.entries(NEEDS).find(([, n]) => n.world === w && n.room === here)?.[0];
+  if (mine && target && !st.solved.includes(target)) return `Aquí hay una pista para el ${WORLD_NAME[other].toLowerCase()}: el chip que brilla en el suelo.`;
+  if (!here.startsWith('comms') && here !== 'hall' && !st.solved.includes(here)) return 'Resuelve la terminal de esta sala.';
+  return 'Sigue por la puerta abierta a la siguiente sala.';
+}
+
+const heard = new Set<string>();
+let heardReady = false;
+let freshUntil = 0;
+
 function render(): void {
   if (!session || !engine) return;
   const st = session.state;
@@ -197,13 +253,26 @@ function render(): void {
     : st.connected[other]
       ? `OTRO JUGADOR: ${ROOM_INFO[other][st.positions[other]]?.short ?? '?'}`
       : 'OTRO JUGADOR: esperando…';
+  const lastSignal = st.signals.filter((s) => s.to === w).slice(-1)[0];
+  // Mensaje nuevo del otro mundo: se enciende la pared del mapa y se avisa en el HUD.
+  for (const sig of st.signals) {
+    if (heard.has(sig.id)) continue;
+    heard.add(sig.id);
+    if (sig.to !== w || !heardReady) continue;
+    engine.wallMessage(sig.received);
+    freshUntil = Date.now() + 12000;
+    setTimeout(render, 12100);
+  }
+  heardReady = true;
   hud.innerHTML = `
     <div class="hud__box ${w === 'inverted' ? 'hud__box--inv' : ''}">
       <div class="hud__header"><span class="hud__title">${WORLD_NAME[w]}</span><span class="hud__sync ${st.alert >= 75 ? 'hud__sync--crit' : ''}">ALERTA ${st.alert}%</span></div>
       <div class="hud__room">${info.short} · ${info.name.toUpperCase()}</div>
-      <div class="hud__row"><span>PARTIDA</span><strong>${session.code}</strong></div>
+      <div class="hud__row"><span>PARTIDA</span><strong>${session.code}${'server' in session && session.server ? ` · srv ${session.server}` : ''}</strong></div>
       <div class="hud__row"><span>CANAL</span><strong class="${st.channelActive ? 'text-green' : 'text-red'}">${st.channelActive ? 'ACTIVO' : st.commsRevealed[w] ? 'SIN VERIFICAR' : 'OCULTO'}</strong></div>
-      <div class="hud__row"><span class="${session.online ? '' : 'text-red'}">${session.online ? peer : 'RECONECTANDO…'}</span></div>
+      <div class="hud__row"><span class="${session.online ? '' : 'text-red'}">${'kicked' in session && session.kicked ? 'Esta partida se abrió en otra pestaña o PC. Usa esa.' : session.online ? peer : 'RECONECTANDO…'}</span></div>
+      ${lastSignal && Date.now() < freshUntil ? `<div class="hud__signal">💡 La pared de luces se enciende: <b>${lastSignal.received}</b></div>` : ''}
+      <div class="hud__goal">▶ ${objective()}</div>
     </div>`;
 
   document.querySelector('#fragment-count')!.textContent = `Fragmentos de contexto · ${st.fragments} de 10 recuperados`;
@@ -211,7 +280,6 @@ function render(): void {
     const ok = st.solved.includes(id);
     return `<div class="slot-box ${ok ? 'slot-box--found' : 'slot-box--empty'}"><span class="slot-word">${i + 1}. ${ok ? fragmentName(id) : '······'}</span></div>`;
   }).join('');
-  const lastSignal = st.signals.filter((s) => s.to === w).slice(-1)[0];
   document.querySelector('#collectibles-label')!.textContent = lastSignal ? `Última señal recibida: ${lastSignal.received}` : 'Sin señales recibidas';
   document.querySelector('#minimap-grid')!.innerHTML = (['real', 'inverted'] as World[]).map((world) =>
     `<div class="mini-row ${world}">${ROOM_INFO[world].map((r, i) => {
@@ -223,31 +291,70 @@ function render(): void {
 
   if (st.ending) showEnding(st.ending);
   refreshPanel?.();
+  maybePlayChannelOpening();
 }
 
-function begin(s: Session): void {
+function maybePlayChannelOpening(): void {
+  if (channelOpeningPlaying || session.state.channelOpeningSeen) return;
+  const ready = session.mode === 'coop'
+    ? session.state.channelActive
+    : session.state.commsRevealed.real || session.state.commsRevealed.inverted;
+  if (!ready) return;
+
+  channelOpeningPlaying = true;
+  refreshPanel = null;
+  engine.setPaused(true);
+  session.dispatch({ type: 'mark-channel-opening-seen' });
+  void playChannelOpening(overlay).then(() => {
+    channelOpeningPlaying = false;
+    engine.setPaused(false);
+    render();
+  });
+}
+
+async function begin(s: Session): Promise<void> {
   session = s;
   lobby.hidden = true;
   document.body.dataset.world = s.world;
   const w = s.world;
-  const intro = w === 'real'
-    ? ['GENESIS // AÑO 2097 · MUNDO REAL', 'Lía: «Sato… la fábrica se partió en dos. No ves al otro lado, pero alguien está allí.»', 'Lía: «Busca el canal de emergencia que dejé. Hay aire saliendo de una pared.»']
-    : ['GENESIS // AÑO 2097 · MUNDO INVERTIDO', 'Lía: «Aquí nada es fiable. Los objetos flotan, los datos mienten.»', 'Lía: «Busca el canal de emergencia. Lo que sabes aquí, el otro mundo lo necesita.»'];
-  engine = new WorldEngine(canvas, w, roomsOf(w).length, {
+  const INTRO = {
+    real: ['GENESIS // AÑO 2097 · MUNDO REAL', 'Lía: «Sato… la fábrica se partió en dos. No ves al otro lado, pero alguien está allí.»', 'Lía: «Busca el canal de emergencia que dejé. Hay aire saliendo de una pared.»'],
+    inverted: ['GENESIS // AÑO 2097 · MUNDO INVERTIDO', 'Lía: «Aquí nada es fiable. Los objetos flotan, los datos mienten.»', 'Lía: «Busca el canal de emergencia. Lo que sabes aquí, el otro mundo lo necesita.»'],
+  };
+  engine = new TileEngine(canvas, w, {
     isOpen,
-    isSolved: (i) => solved(roomsOf(session.world)[i]),
-    interactables,
+    isSolved: solved,
+    hasClue: (world, roomId) => clueFor(world, roomId, session.state.seed) !== null,
     onInteract,
     onRoomChanged,
-    intro,
+    onBlocked,
+    fragments: () => session.state.fragments,
+    intro: () => (session.world === 'real' ? INTRO.real : INTRO.inverted),
+    solo: s.mode === 'solo',
   });
   let startRoom = 1;
   if (s.mode === 'coop') startRoom = Math.max(0, s.state.positions[w] ?? 1);
   engine.placeIn(Math.min(startRoom, roomsOf(w).length - 1));
   s.onChange(render);
-  bindControls();
   render();
+  // El opening ocupa el overlay antes de habilitar las entradas del juego.
+  // El motor no inicia su RAF hasta que la promesa de la cinemática termina.
+  engine.setPaused(true);
+  await playOpening(overlay);
+  engine.skipIntro();
+  engine.setPaused(false);
+  bindControls();
   engine.start();
+  let seenGuide = false;
+  try { seenGuide = localStorage.getItem('rescate-guia') === '1'; } catch { /* sin almacenamiento */ }
+  if (!seenGuide) {
+    const wait = setInterval(() => {
+      if (engine.inIntro || !overlay.hidden) return;
+      clearInterval(wait);
+      openGuide();
+      try { localStorage.setItem('rescate-guia', '1'); } catch { /* sin almacenamiento */ }
+    }, 300);
+  }
   if (import.meta.env.DEV) (window as unknown as { __game: unknown }).__game = { session, engine };
 }
 
@@ -264,11 +371,13 @@ function bindControls(): void {
     if (e.key === 'Escape' && !overlay.hidden) closePanel();
     if (typing) return;
     if (e.key.toLowerCase() === 'm') updateMusic(music.toggle());
+    if (e.key.toLowerCase() === 'g' && overlay.hidden && !engine.inIntro) openGuide();
     if (e.key.toLowerCase() === 'f') {
       if (!document.fullscreenElement) void document.documentElement.requestFullscreen(); else void document.exitFullscreen();
     }
   });
   document.querySelector('#music-button')?.addEventListener('click', () => updateMusic(music.toggle()));
+  document.querySelector('#guide-button')?.addEventListener('click', () => { if (overlay.hidden) openGuide(); });
   document.querySelector('#fullscreen-button')?.addEventListener('click', () => {
     if (!document.fullscreenElement) void document.documentElement.requestFullscreen(); else void document.exitFullscreen();
   });
@@ -276,7 +385,8 @@ function bindControls(): void {
     if (confirm('¿Salir al menú? La partida cooperativa sigue en el servidor y puedes volver con el código.')) location.reload();
   });
   document.querySelectorAll<HTMLButtonElement>('[data-key]').forEach((button) => {
-    const key = button.dataset.key!;
+    const KEY: Record<string, string> = { arrowup: 'up', arrowdown: 'down', arrowleft: 'left', arrowright: 'right' };
+    const key = KEY[button.dataset.key!] ?? button.dataset.key!;
     const start = (ev: Event): void => { ev.preventDefault(); engine.press(key); };
     const end = (ev: Event): void => { ev.preventDefault(); engine.release(key); };
     button.addEventListener('pointerdown', start);

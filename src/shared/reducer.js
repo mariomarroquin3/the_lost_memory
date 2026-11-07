@@ -5,21 +5,23 @@ export const WORLDS = ['real', 'inverted'];
 
 /** Salas de cada mundo, en el orden del pasillo. La 0 es el cuarto de comunicación oculto. */
 export const ROOMS = {
-  real: ['comms-real', 'r1', 'r2', 'r3', 'r4', 'r5'],
+  real: ['comms-real', 'hall', 'r1', 'r2', 'r3', 'r4', 'r5'],
   inverted: ['comms-inverted', 'transition', 'i6', 'i7', 'i8', 'i9', 'i10'],
 };
 
 /** Salas que entregan un fragmento de contexto. */
 export const FRAGMENT_ROOMS = ['r1', 'r2', 'r3', 'r4', 'r5', 'i6', 'i7', 'i8', 'i9', 'i10'];
 
-/** Ruido por bit del canal real entre mundos. */
-export const CHANNEL_NOISE = 0.08;
+/** Probabilidad de que una letra se encienda mal (salta a la bombilla de al lado). */
+export const CHANNEL_NOISE = 0.15;
 
-const HEX = '0123456789ABCDEF';
+/** Bombillas de la pared de luces, en orden. */
+export const WALL = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+const LETTERS = 'ABCDEFGHJKLMNPRSTUVWXYZ';
 
 export function randomCode(length, rand = Math.random) {
   let out = '';
-  for (let i = 0; i < length; i++) out += HEX[Math.floor(rand() * 16)];
+  for (let i = 0; i < length; i++) out += LETTERS[Math.floor(rand() * LETTERS.length)];
   return out;
 }
 
@@ -43,6 +45,7 @@ export function createState(seed = Math.floor(Math.random() * 1e9)) {
     connected: { real: false, inverted: false },
     ending: null,
     alert: 5,
+    channelOpeningSeen: false,
   };
 }
 
@@ -54,50 +57,47 @@ export function fragmentCount(state) {
   return FRAGMENT_ROOMS.filter((id) => state.solved.includes(id)).length;
 }
 
-// ---------- Codificación de las señales luminosas ----------
+// ---------- Pared de luces ----------
 
-const toBits = (symbol) => {
-  const v = HEX.indexOf(symbol);
-  return [3, 2, 1, 0].map((b) => (v >> b) & 1);
-};
-
-export function encodeSymbol(symbol, encoding) {
-  const bits = toBits(symbol);
-  if (encoding === 'rep3') return bits.flatMap((b) => [b, b, b]);
-  if (encoding === 'parity') return [...bits, bits.reduce((a, b) => a ^ b, 0)];
-  return bits;
+/** Una letra que pasa por el canal: a veces se enciende la bombilla vecina. */
+function flicker(ch, noise, rand) {
+  if (ch === ' ' || rand() >= noise) return ch;
+  const i = WALL.indexOf(ch);
+  const j = (i + (rand() < 0.5 ? -1 : 1) + WALL.length) % WALL.length;
+  return WALL[j];
 }
 
-export function decodeSymbol(bits, encoding) {
-  let data = bits;
-  if (encoding === 'rep3') {
-    data = [0, 1, 2, 3].map((i) => (bits[i * 3] + bits[i * 3 + 1] + bits[i * 3 + 2] >= 2 ? 1 : 0));
-  } else if (encoding === 'parity') {
-    data = bits.slice(0, 4);
-    const parity = data.reduce((a, b) => a ^ b, 0);
-    if (parity !== bits[4]) return '?';
-  }
-  return HEX[data.reduce((acc, b) => acc * 2 + b, 0)];
-}
-
-/** Envía un mensaje por un canal con ruido y devuelve lo que llega al otro lado. */
+/**
+ * Envía un mensaje por la pared de luces. Con 'rep3' cada letra se enciende tres veces
+ * y gana la que más se repite; si las tres salen distintas llega «?».
+ */
 export function transmit(message, encoding, noise, rand = Math.random) {
-  const sentBits = [];
-  const receivedBits = [];
   let received = '';
-  for (const symbol of message) {
-    const bits = encodeSymbol(symbol, encoding);
-    const noisy = bits.map((b) => (rand() < noise ? 1 - b : b));
-    sentBits.push(...bits);
-    receivedBits.push(...noisy);
-    received += decodeSymbol(noisy, encoding);
+  let flashes = 0;
+  let wrong = 0;
+  for (const ch of message) {
+    if (ch === ' ') { received += ' '; continue; }
+    if (encoding === 'rep3') {
+      const tries = [flicker(ch, noise, rand), flicker(ch, noise, rand), flicker(ch, noise, rand)];
+      flashes += 3;
+      wrong += tries.filter((t) => t !== ch).length;
+      const best = tries.find((t) => tries.filter((u) => u === t).length >= 2);
+      received += best ?? '?';
+    } else {
+      const t = flicker(ch, noise, rand);
+      flashes += 1;
+      if (t !== ch) wrong += 1;
+      received += t;
+    }
   }
-  const flipped = sentBits.filter((b, i) => b !== receivedBits[i]).length;
-  return { received, sentBits, receivedBits, flipped };
+  return { received, flashes, wrong };
 }
 
 export function sanitizeMessage(text) {
-  return String(text ?? '').toUpperCase().replace(/[^0-9A-F]/g, '').slice(0, 8);
+  return String(text ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ')
+    .replace(/\s+/g, ' ').trim().slice(0, 20);
 }
 
 // ---------- Reductor ----------
@@ -124,6 +124,11 @@ export function reduce(state, world, action) {
       state.commsRevealed[world] = true;
       return true;
     }
+    case 'mark-channel-opening-seen': {
+      if (state.channelOpeningSeen) return false;
+      state.channelOpeningSeen = true;
+      return true;
+    }
     case 'solve': {
       const id = String(action.id);
       if (!ROOMS[world].includes(id) || state.solved.includes(id)) return false;
@@ -135,7 +140,7 @@ export function reduce(state, world, action) {
       if (!state.commsRevealed[world]) return false;
       const message = sanitizeMessage(action.message);
       if (!message) return false;
-      const encoding = ['none', 'rep3', 'parity'].includes(action.encoding) ? action.encoding : 'none';
+      const encoding = action.encoding === 'rep3' ? 'rep3' : 'none';
       const result = transmit(message, encoding, CHANNEL_NOISE);
       state.signals.push({
         id: `${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
@@ -144,8 +149,8 @@ export function reduce(state, world, action) {
         sent: message,
         received: result.received,
         encoding,
-        bits: result.sentBits.length,
-        flipped: result.flipped,
+        bits: result.flashes,
+        flipped: result.wrong,
         at: Date.now(),
       });
       if (state.signals.length > 60) state.signals.splice(0, state.signals.length - 60);
@@ -153,7 +158,7 @@ export function reduce(state, world, action) {
     }
     case 'verify': {
       // El jugador de "world" confirma el código que recibió del otro mundo.
-      const code = sanitizeMessage(action.code);
+      const code = sanitizeMessage(action.code).replace(/ /g, '');
       if (code !== state.verifyCodes[other] || state.verified[other]) return false;
       state.verified[other] = true;
       const commsId = other === 'real' ? 'comms-real' : 'comms-inverted';

@@ -17,6 +17,11 @@ export interface Session {
 
 const SOLO_KEY = 'rescate-solo-v1';
 const COOP_KEY = 'rescate-coop-v1';
+const STATE_KEY = 'rescate-coop-state-';
+
+function savedState(code: string): PublicState | undefined {
+  try { return JSON.parse(localStorage.getItem(`${STATE_KEY}${code.toUpperCase()}`) ?? 'null') ?? undefined; } catch { return undefined; }
+}
 
 class Emitter {
   private listeners: Array<() => void> = [];
@@ -69,39 +74,61 @@ export class CoopSession extends Emitter implements Session {
   private socket: WebSocket | null = null;
   private ready = false;
   private retry = 0;
+  private token = '';
+  server = '';
+  /** true si otra pestaña tomó este mundo: ya no se reconecta. */
+  kicked = false;
 
   /** Abre la partida. Resuelve con el mundo asignado o falla con un mensaje legible. */
   connect(code: string, world: World | null): Promise<void> {
     return new Promise((resolve, reject) => {
       let settled = false;
+      const last = lastCoop();
+      if (!this.token && last?.token && code && last.code === code.toUpperCase()) this.token = last.token;
       const open = (): void => {
         const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-        const socket = new WebSocket(`${proto}://${location.host}/ws`);
+        // En producción el servidor puede vivir en otro dominio (p. ej. Fly.io): VITE_WS_URL=wss://tu-app.fly.dev/ws
+        const socket = new WebSocket(import.meta.env.VITE_WS_URL || `${proto}://${location.host}/ws`);
         this.socket = socket;
         socket.onopen = () => {
           this.retry = 0;
-          socket.send(JSON.stringify({ type: 'join', code: this.code || code, world: this.ready ? this.world : world }));
+          // Al reconectar manda su ficha y una copia del estado, por si el servidor se reinició.
+          socket.send(JSON.stringify({
+            type: 'join',
+            code: this.code || code,
+            world: this.ready ? this.world : world,
+            token: this.token || undefined,
+            resume: this.ready ? this.state : savedState(this.code || code),
+          }));
         };
         socket.onmessage = (event) => {
           const msg = JSON.parse(String(event.data));
           if (msg.type === 'welcome') {
             this.code = msg.code;
             this.world = msg.world;
+            this.token = msg.token ?? '';
+            this.server = msg.server ?? '';
             this.online = true;
             this.ready = true;
-            try { localStorage.setItem(COOP_KEY, JSON.stringify({ code: this.code, world: this.world })); } catch { /* ignorar */ }
+            try { localStorage.setItem(COOP_KEY, JSON.stringify({ code: this.code, world: this.world, token: this.token })); } catch { /* ignorar */ }
             if (!settled) { settled = true; resolve(); }
           } else if (msg.type === 'state') {
             this.state = msg.state;
+            // Copia local de la partida (mensajes incluidos) para recargar la página o si el servidor se reinicia.
+            try { localStorage.setItem(`${STATE_KEY}${this.code}`, JSON.stringify(msg.state)); } catch { /* ignorar */ }
             this.emit();
+          } else if (msg.type === 'kicked') {
+            this.kicked = true;
           } else if (msg.type === 'error') {
             if (!settled) { settled = true; reject(new Error(msg.message)); }
+            else console.warn('[partida]', msg.message);
           }
         };
         socket.onclose = () => {
           this.online = false;
           this.emit();
           if (!settled) { settled = true; reject(new Error('No se pudo conectar con el servidor de partidas.')); return; }
+          if (this.kicked) return;
           // Reconexión automática a la misma partida y el mismo mundo.
           this.retry = Math.min(this.retry + 1, 5);
           window.setTimeout(open, 500 * this.retry);
@@ -116,7 +143,7 @@ export class CoopSession extends Emitter implements Session {
   }
 }
 
-export function lastCoop(): { code: string; world: World } | null {
+export function lastCoop(): { code: string; world: World; token?: string } | null {
   try { return JSON.parse(localStorage.getItem(COOP_KEY) ?? 'null'); } catch { return null; }
 }
 
