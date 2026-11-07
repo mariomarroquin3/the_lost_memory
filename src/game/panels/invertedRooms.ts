@@ -230,7 +230,9 @@ export function openRoom7(ctx: PanelCtx): void {
         <div>
           <canvas width="160" height="160" class="sim-canvas pix" data-stop></canvas>
           <label class="rp-small"><input type="checkbox" data-heat> Mapa de sensibilidad del clasificador</label>
+          <p class="rp-small" data-heat-legend hidden>Cuanto más intenso el cian, más depende el modelo de ese píxel. Se fija en el borde de la franja blanca, no en la forma completa. Los recuadros amarillos son los píxeles que ya alteraste.</p>
           <p class="rp-small" data-cls></p>
+          <p class="rp-small" data-adv></p>
           <h3>Calibración</h3>
           <label class="rp-small">Temperatura: <b data-tv></b><input type="range" min="0" max="20" value="7" data-temp></label>
           <canvas width="260" height="90" class="sim-canvas" data-cal></canvas>
@@ -255,26 +257,47 @@ export function openRoom7(ctx: PanelCtx): void {
   });
   const stop = sim(root, '[data-stop]');
   const cal = sim(root, '[data-cal]');
+  // Peso de cada píxel en la decisión: los sensibles pesan mucho, sus vecinos algo, el resto casi nada.
+  const weight = Array.from({ length: 64 }, (_, i) => {
+    if (d.sensitive.includes(i)) return 0.95;
+    const near = d.sensitive.some((j) => Math.abs((j % 8) - (i % 8)) <= 1 && Math.abs(Math.floor(j / 8) - Math.floor(i / 8)) <= 1);
+    return near ? 0.3 : 0.05;
+  });
   const score = (): number => {
-    // Puntuación STOP: alta por defecto; los píxeles sensibles cambian mucho la decisión.
+    // Puntuación STOP: alta por defecto; si baja de 0, el modelo cambia de clase.
     let s = 2.2;
-    for (const i of noise) s += d.sensitive.includes(i) ? -0.95 : -0.08;
+    for (const i of noise) s -= weight[i];
     return s;
   };
   const drawStop = (): void => {
     const heat = $(root, '[data-heat]').checked;
+    (root.querySelector('[data-heat-legend]') as HTMLElement).hidden = !heat;
     for (let i = 0; i < 64; i++) {
+      const x = (i % 8) * 20;
+      const y = Math.floor(i / 8) * 20;
       const on = STOP[i] ^ (noise.has(i) ? 1 : 0);
       const isBar = i >= 24 && i < 40 && STOP[i] === 0;
       stop.fillStyle = on ? '#e05252' : isBar ? '#ece3d6' : '#0b0910';
+      // Un píxel alterado cambia muy poco de color: para una persona sigue siendo un STOP.
       if (noise.has(i)) stop.fillStyle = on ? '#d44848' : '#e8dcd0';
-      stop.fillRect((i % 8) * 20, Math.floor(i / 8) * 20, 19, 19);
-      if (heat && d.sensitive.includes(i)) { stop.fillStyle = 'rgba(0,229,255,0.45)'; stop.fillRect((i % 8) * 20, Math.floor(i / 8) * 20, 19, 19); }
+      stop.fillRect(x, y, 19, 19);
+      if (heat) {
+        stop.fillStyle = `rgba(0,229,255,${weight[i] > 0.9 ? 0.8 : weight[i] > 0.2 ? 0.22 : 0})`;
+        stop.fillRect(x, y, 19, 19);
+      }
+      if (noise.has(i)) {
+        stop.strokeStyle = '#ffd34d';
+        stop.lineWidth = 2;
+        stop.strokeRect(x + 1.5, y + 1.5, 16, 16);
+      }
     }
     const s = score();
     const p = 1 / (1 + Math.exp(-s * 2));
     flipped = s < 0;
     root.querySelector('[data-cls]')!.innerHTML = `Clasificador: <b class="${flipped ? 'bad' : 'ok'}">${flipped ? 'CEDA EL PASO' : 'STOP'}</b> · confianza ${Math.round((flipped ? 1 - p : p) * 100)}% · píxeles alterados ${noise.size}/4`;
+    root.querySelector('[data-adv]')!.textContent = flipped
+      ? 'Para ti sigue siendo un STOP; para el modelo ya no. Unos pocos píxeles bien elegidos bastan para engañarlo.'
+      : `Puntuación de STOP: ${s.toFixed(2)}. Si baja de 0, el modelo cambia de opinión. Toca un píxel otra vez para deshacerlo.`;
   };
   const drawCal = (): void => {
     const T = Number($(root, '[data-temp]').value) / 10;
@@ -445,7 +468,8 @@ export function openRoom9(ctx: PanelCtx): void {
               <label class="rp-small">Parámetros <select class="late-room__select" data-param="${i}">${t.params.map((x, j) => `<option value="${j}">${esc(x)}</option>`).join('')}</select></label>
               ${t.id === 'apagado_emergencia' ? '<label class="rp-small"><input type="checkbox" data-confirm> Requiere confirmación humana</label>' : ''}
             </fieldset>`).join('')}
-          <label class="rp-small">Valor de puerta_id: <input class="cmd-input mini" data-door placeholder="P-?" maxlength="4"></label>
+          <label class="rp-small door-id">Valor de puerta_id: <input class="cmd-input door-id__input" data-door placeholder="P-?" maxlength="6" autocomplete="off" spellcheck="false"></label>
+          <p class="rp-small">Formato P-n, por ejemplo P-2. El número está en la etiqueta de mantenimiento del Mundo Real.</p>
         </div>
         <div>
           <h3>Consola del agente</h3>
@@ -458,7 +482,10 @@ export function openRoom9(ctx: PanelCtx): void {
     const descs = TOOLS.map((t, i) => t.descs[Number($(root, `[data-desc="${i}"]`).value)].toLowerCase());
     const params = TOOLS.map((t, i) => t.params[Number($(root, `[data-param="${i}"]`).value)]);
     const confirm = $(root, '[data-confirm]').checked;
-    const door = $(root, '[data-door]').value.toUpperCase().replace(/\s/g, '');
+    // Acepta «P-4», «p4», «P 4» o solo «4»: todo se normaliza a P-n.
+    const rawDoor = $(root, '[data-door]').value.toUpperCase().replace(/\s/g, '');
+    const doorMatch = /^(?:P-?)?(\d{1,2})$/.exec(rawDoor);
+    const door = doorMatch ? `P-${Number(doorMatch[1])}` : rawDoor;
     const lines: string[] = [];
     let ok = 0;
     for (const task of TASKS) {
@@ -474,7 +501,10 @@ export function openRoom9(ctx: PanelCtx): void {
       }
       if (tool === 'abrir_puerta') {
         if (!params[0].startsWith('puerta_id')) { lines.push('  ✘ parámetro sin formato: la puerta no sabe cuál abrir'); continue; }
-        if (door !== `P-${d.door}`) { lines.push(`  ✘ observar: la puerta ${door || '(vacía)'} no existe o no es la de mantenimiento`); continue; }
+        if (!rawDoor) { lines.push('  ✘ observar: falta el valor de puerta_id; escribe el número de la etiqueta (P-n)'); continue; }
+        if (!doorMatch) { lines.push(`  ✘ observar: «${rawDoor}» no tiene el formato P-n (por ejemplo P-2)`); continue; }
+        if (door !== `P-${d.door}`) { lines.push(`  ✘ observar: la puerta ${door} existe, pero no es la de mantenimiento; revisa la etiqueta del Mundo Real`); continue; }
+        lines.push(`  llamar: abrir_puerta(puerta_id="${door}")`);
       }
       if (tool === 'consultar_registro' && !params[1].startsWith('desde')) { lines.push('  ✘ sin parámetro de hora: devuelve 40.000 líneas'); continue; }
       lines.push('  ✔ observar: resultado correcto');

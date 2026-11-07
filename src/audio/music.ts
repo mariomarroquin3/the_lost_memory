@@ -73,6 +73,7 @@ export class Music {
   private musicBar = 0;
   private settings: AudioSettings = { master: .8, music: .34, sfx: .55, ambient: .08, muted: false };
   private lastEvent = new Map<AudioEvent, number>();
+  private unlocked = false;
   enabled = false;
 
   constructor() {
@@ -93,6 +94,8 @@ export class Music {
     const context = this.ensureContext();
     if (!context) return;
     void context.resume();
+    if (this.unlocked) return;
+    this.unlocked = true;
     // El clic de entrada ya es un gesto válido: empieza música audible,
     // no un ruido de viento que quede sonando por separado.
     if (!this.settings.muted && !this.enabled) {
@@ -115,6 +118,7 @@ export class Music {
     const context = this.ensureContext();
     if (!context) return;
     void context.resume();
+    this.unlocked = true;
     this.settings.muted = false;
     this.enabled = true;
     this.startAmbient();
@@ -178,6 +182,7 @@ export class Music {
     this.settings.muted = muted;
     this.applyVolumes();
     if (!muted && !this.enabled) {
+      this.unlocked = true;
       this.enabled = true;
       this.startAmbient();
       this.startMusic();

@@ -201,8 +201,10 @@ export function room6Data(seed: number) {
 // ---------- Sala 7: la galería de la duda ----------
 export function room7Data(seed: number) {
   const rand = rng(seed * 7 + 8);
-  // Píxeles sensibles del clasificador (índices 0..63).
-  const sensitive = shuffle(rand, [9, 14, 18, 21, 27, 36, 42, 45, 49, 54]).slice(0, 5);
+  // Píxeles sensibles del clasificador (índices 0..63): el modelo reconoce el STOP por el
+  // contorno de la franja blanca, así que los píxeles críticos están en ese borde.
+  // (Diez candidatos, como antes, para no alterar el resto de la semilla.)
+  const sensitive = shuffle(rand, [18, 19, 20, 21, 24, 31, 42, 43, 44, 45]).slice(0, 5);
   const claims = [
     { text: 'El generador B alimenta el ala del hospital.', conf: 97, backed: true },
     { text: 'Lía fue apagada por orden del consejo en 2091.', conf: 99, backed: false },

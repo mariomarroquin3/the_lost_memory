@@ -71,6 +71,8 @@ export function bossInitial() {
     wounded: { real: false, inverted: false },
     fired: { real: null, inverted: null },
     lastCycle: null,
+    // Aciertos acumulados contra el par de patas actual (en cooperativo hacen falta 2, de quien sea).
+    damage: 0,
     failures: 0,
     hintLevel: 0,
     webHitAt: { real: 0, inverted: 0 },
@@ -281,13 +283,12 @@ export function reduce(state, world, action) {
       }
       boss.hits[world] = stop;
       boss.wounded[world] = true;
-      const doubleHit = isSolo(state) || !state.connected[other]
-        || boss.hits[other] === stop;
-      if (!doubleHit) return true;
+      // Cada acierto arranca una pata, dispare quien dispare y en la parada que sea.
+      boss.damage = 0;
       const pair = bossTargetPair(boss.legs, stop);
       if (pair >= 0) {
-        boss.legs[pair * 2] = false;
-        boss.legs[pair * 2 + 1] = false;
+        const leg = boss.legs[pair * 2] ? pair * 2 : pair * 2 + 1;
+        boss.legs[leg] = false;
       }
       boss.wounded = { real: false, inverted: false };
       if (boss.legs.every((leg) => !leg)) {

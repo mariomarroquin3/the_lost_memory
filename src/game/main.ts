@@ -312,7 +312,6 @@ function onRoomChanged(index: number): void {
   const inBossArena = session.state.boss?.active && engine.world === 'inverted' && session.world === 'real';
   if (session.mode === 'coop' && !inBossArena) session.dispatch({ type: 'pos', room: index });
   music.setWorld(session.world);
-  if (!inBossArena) music.event('door');
   const info = inBossArena ? ROOM_INFO.inverted[6] : ROOM_INFO[session.world][index];
   banner.textContent = `${WORLD_NAME[session.world]} // ${index === 0 ? 'C-00' : info.short} · ${info.name.toUpperCase()}`;
   banner.classList.remove('room-banner--on');
@@ -332,11 +331,13 @@ function objective(): string {
     // Los aciertos solo cuentan en la parada actual (lastCycle), no en una vuelta anterior.
     const thisStop = st.boss.lastCycle === arena.cycle;
     const mineHit = thisStop && st.boss.hits[w] === arena.stop;
-    const otherHit = thisStop && st.boss.hits[other] === arena.stop;
-    if (!arena.vulnerable) return 'Persigue a la araña.';
-    if (mineHit && session.mode !== 'solo' && !otherHit && st.connected[other]) return 'Tu disparo acertó: falta el del otro mundo.';
-    if (mineHit) return '¡Impacto! Persigue la siguiente parada.';
-    return '¡Está quieta! ESPACIO para apuntar. Esquiva la telaraña.';
+    const mineFired = thisStop && st.boss.fired[w] === arena.cycle;
+    const wounded = (st.boss.damage ?? 0) > 0;
+    const woundNote = wounded ? ' Un par de patas está herido: un acierto más (de cualquiera) lo derriba.' : '';
+    if (!arena.vulnerable) return `Persigue a la araña.${woundNote}`;
+    if (mineHit) return `¡Impacto!${wounded ? woundNote : ' Una pata menos: persigue la siguiente parada.'}`;
+    if (mineFired) return 'Fallaste el vector: espera la siguiente parada. Recuerda: divide entre la longitud.';
+    return `¡Está quieta! ESPACIO para apuntar. Esquiva la telaraña.${woundNote}`;
   }
   if (st.boss?.phase === 'defeated' && !st.ending) return 'La araña cayó. Elige el destino de Genesis.';
   const entry = w === 'real' ? 'Recepción' : 'la Puerta de transición';
@@ -371,7 +372,6 @@ function render(): void {
   const st = session.state;
   const w = session.world;
   const roomId = roomsOf(w)[engine.room];
-  music.unlock();
   music.setWorld(w);
   music.setAlert(st.alert);
   music.setFragments(st.fragments);

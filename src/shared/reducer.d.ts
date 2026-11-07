@@ -15,6 +15,7 @@ export interface BossState {
   /** Ciclo de la parada en la que cada jugador ya disparó. */
   fired: Record<World, number | null>;
   lastCycle: number | null;
+  damage?: number;
   failures: number;
   hintLevel: number;
   webHitAt: Record<World, number>;

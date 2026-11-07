@@ -75,6 +75,8 @@ export class TileEngine {
   private lastBlocked = -10;
   private lastBossPosition = -10;
   private bossAim: { stop: number; raw: BossVector; options: BossVector[] } | null = null;
+  /** Hasta cuándo mostrar «demasiado cerca» (no se puede apuntar encima de la araña). */
+  private bossTooClose = 0;
   private bossRay: BossRay | null = null;
   private readonly bossWebs: BossWeb[] = [];
   private nextBossWeb = 0;
@@ -189,7 +191,7 @@ export class TileEngine {
       if (typing) return;
       if (this.hooks.bossActive?.()) {
         if (k === ' ') { e.preventDefault(); this.openBossAim(); return; }
-        if (this.bossAim && ['1', '2', '3', '4'].includes(k)) {
+        if (this.bossAim && ['1', '2', '3'].includes(k)) {
           e.preventDefault(); this.fireBossOption(Number(k) - 1); return;
         }
       }
@@ -291,14 +293,14 @@ export class TileEngine {
       x: Math.round((arena.x - position.x) / 16),
       y: Math.round((arena.y - position.y) / 16),
     };
-    if (raw.x === 0 && raw.y === 0) return;
+    if (raw.x === 0 && raw.y === 0) { this.bossTooClose = this.time + 1.5; return; }
     const length = Math.hypot(raw.x, raw.y);
     const unit = { x: raw.x / length, y: raw.y / length };
     this.bossAim = {
       stop: arena.stop,
       raw,
       // Orden al azar: la correcta no puede estar siempre en el 1.
-      options: [unit, { x: raw.x, y: raw.y }, { x: -unit.x, y: -unit.y }, { x: unit.x / 2, y: unit.y / 2 }]
+      options: [unit, { x: raw.x, y: raw.y }, { x: -unit.x, y: -unit.y }]
         .map((v) => ({ v, k: Math.random() }))
         .sort((a, b) => a.k - b.k)
         .map(({ v }) => v),
@@ -698,19 +700,24 @@ export class TileEngine {
       o.fillStyle = '#ffe9b0';
       o.font = '7px monospace';
       o.textAlign = 'center';
-      o.fillText(`v = (${raw.x}, ${raw.y})`, this.player.x, this.player.y - 23);
+      o.fillText(this.bossTooClose > this.time ? 'Demasiado cerca: aléjate un paso' : `v = (${raw.x}, ${raw.y})`, this.player.x, this.player.y - 23);
     }
     if (this.bossAim) {
       const baseX = ox + 14;
       const baseY = oy + 142;
       o.fillStyle = 'rgba(5,4,10,.9)';
-      o.fillRect(baseX, baseY, 260, 38);
+      const { x: rx, y: ry } = this.bossAim.raw;
+      const len = Math.hypot(rx, ry);
+      o.fillRect(baseX, baseY - 10, 260, 48);
       o.strokeStyle = '#00e5ff';
-      o.strokeRect(baseX, baseY, 260, 38);
+      o.strokeRect(baseX, baseY - 10, 260, 48);
       o.font = '7px monospace';
       o.textAlign = 'left';
       o.fillStyle = '#ece3d6';
-      o.fillText(`v = (${this.bossAim.raw.x}, ${this.bossAim.raw.y})  Elige 1-4`, baseX + 5, baseY + 9);
+      const sq = (n: number): string => (n < 0 ? `(${n})²` : `${n}²`);
+      o.fillText(`v = (${rx}, ${ry})   |v| = √(${sq(rx)} + ${sq(ry)}) = ${len.toFixed(2)}`, baseX + 5, baseY - 1);
+      o.fillStyle = '#7ef59b';
+      o.fillText(`Unitario = v ÷ |v|: misma dirección, largo 1.  Elige 1-3`, baseX + 5, baseY + 9);
       this.bossAim.options.forEach((option, index) => {
         o.fillStyle = '#ffb454';
         o.fillText(`${index + 1}: (${option.x.toFixed(2)}, ${option.y.toFixed(2)})`, baseX + 5 + (index % 2) * 128, baseY + 20 + Math.floor(index / 2) * 10);

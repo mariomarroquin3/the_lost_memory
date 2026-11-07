@@ -751,3 +751,7 @@ body[data-world='inverted'] .wall { background: repeating-linear-gradient(90deg,
 /* Escena «La verdad»: registro del núcleo con la firma de Sato */
 .truth-scene__stage { display: grid; place-items: center; background: radial-gradient(circle at 50% 45%, #2a0f18 0%, #0b0910 70%); }
 .truth-scene__log { min-width: min(520px, 86%); min-height: 6.5em; margin: 0; padding: 14px 16px; border: 1px solid #ff1744; background: #0d0609; color: #ffb4b4; font: clamp(10px, 1.7vw, 13px)/1.6 var(--font-mono, monospace); white-space: pre-wrap; }
+
+/* Sala 9: el identificador de puerta debe leerse completo con la fuente pixelada. */
+.door-id { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.door-id__input { width: 9em; min-width: 9em; flex: 0 0 auto; }

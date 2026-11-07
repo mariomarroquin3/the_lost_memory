@@ -60,6 +60,7 @@ function restore(code, snap) {
       wounded: { real: Boolean(b.wounded.real), inverted: Boolean(b.wounded.inverted) },
       fired: { real: cycle(b.fired?.real), inverted: cycle(b.fired?.inverted) },
       lastCycle: cycle(b.lastCycle),
+      damage: b.damage === 1 ? 1 : 0,
       failures: Number.isInteger(b.failures) && b.failures >= 0 ? b.failures : 0,
       hintLevel: Number.isInteger(b.hintLevel) ? Math.max(0, Math.min(3, b.hintLevel)) : 0,
       webHitAt: { real: Number.isFinite(b.webHitAt?.real) ? b.webHitAt.real : 0, inverted: Number.isFinite(b.webHitAt?.inverted) ? b.webHitAt.inverted : 0 },
