@@ -1039,3 +1039,52 @@ export function propLight(thing: Thing, x: number, y: number, t: number): SceneL
     default: return null;
   }
 }
+
+/**
+ * Dibuja la araña final en 48x32, sin dependencias de imagen.
+ * 8 patas: las pares (izquierda) atacan al Mundo Real y las impares (derecha) al Invertido.
+ * En la ronda r atacan a la vez las patas 2r y 2r+1.
+ */
+export function drawBossSpider(
+  g: CanvasRenderingContext2D,
+  legs: readonly boolean[],
+  activeRound: number,
+  time: number,
+  offsetX = 0,
+  offsetY = 0,
+  clear = true,
+  wounded: readonly boolean[] = [],
+): void {
+  g.save();
+  g.translate(offsetX, offsetY);
+  if (clear) g.clearRect(0, 0, 48, 32);
+  g.imageSmoothingEnabled = false;
+  g.fillStyle = '#191522';
+  g.fillRect(15, 8, 18, 14);
+  g.fillStyle = '#8c2b82';
+  g.fillRect(20, 11, 8, 7);
+  g.fillStyle = CYAN;
+  g.fillRect(22, 12, 4, 4);
+  const pulse = activeRound >= 0 && Math.floor(time * 2.5) % 2 === 0;
+  for (let i = 0; i < 8; i++) {
+    const row = Math.floor(i / 2);
+    const leftSide = i % 2 === 0;
+    const y = 9 + row * 4;
+    const x = leftSide ? 15 : 33;
+    const ex = leftSide ? 2 : 46;
+    const ey = 3 + row * 8;
+    const on = Boolean(legs[i]);
+    const attacking = on && row === activeRound;
+    const flickerWound = wounded[leftSide ? 0 : 1] && Math.floor(time * 8) % 2 === 0;
+    g.strokeStyle = !on ? '#2a202b' : flickerWound ? '#2a202b' : attacking && pulse ? '#ffffff' : leftSide ? ORANGE : VIOLET;
+    g.lineWidth = attacking ? 2 : 1;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo((x + ex) / 2, Math.min(y, ey) - 3);
+    g.lineTo(ex, ey);
+    g.stroke();
+    g.fillStyle = on && !flickerWound ? RED : '#2a202b';
+    g.fillRect(ex - 1, ey - 1, 2, 2);
+  }
+  g.restore();
+}

@@ -9,6 +9,7 @@ export interface PanelCtx {
   isSolved(id: string): boolean;
   solve(id: string): void;
   close(): void;
+  audio?: (event: import('../../audio/music').AudioEvent) => void;
 }
 
 export const esc = (s: string): string => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]!));
@@ -42,6 +43,8 @@ export function say(root: HTMLElement, text: string, ok = false): void {
 
 export function win(ctx: PanelCtx, root: HTMLElement, id: string, lesson: string): void {
   if (!ctx.isSolved(id)) ctx.solve(id);
+  ctx.audio?.('solve');
+  if (id.startsWith('r') || /^i\d/.test(id)) ctx.audio?.('fragment');
   say(root, `✔ ${id.startsWith('r') || /^i\d/.test(id) ? 'Fragmento recuperado' : 'Sala resuelta'}. Se aprende: ${lesson}`, true);
 }
 

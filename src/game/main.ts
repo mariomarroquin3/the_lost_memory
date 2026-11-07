@@ -13,6 +13,8 @@ import { openRoom6, openRoom7, openRoom8, openRoom9, openRoom10, openTransition 
 import { Music } from '../audio/music';
 import { playOpening } from './opening';
 import { playChannelOpening } from './channelOpening';
+import { playBossOpening } from './bossOpening';
+import { bossArenaPosition } from '../shared/reducer.js';
 
 const canvas = document.querySelector<HTMLCanvasElement>('#game')!;
 const overlay = document.querySelector<HTMLElement>('#overlay')!;
@@ -26,6 +28,12 @@ let engine: TileEngine;
 let refreshPanel: (() => void) | null = null;
 let shownEnding: Ending | null = null;
 let channelOpeningPlaying = false;
+let bossOpeningPlaying = false;
+let bossFightShown = false;
+let bossVictoryShown = false;
+let finalDecisionShown = false;
+let lastAlert = 5;
+let audioChannelActive = false;
 
 // ============================== LOBBY ==============================
 function showLobby(error = ''): void {
@@ -59,16 +67,18 @@ function showLobby(error = ''): void {
     </section>`;
   const fail = (e: unknown): void => showLobby(e instanceof Error ? e.message : String(e));
   lobby.querySelectorAll<HTMLButtonElement>('[data-create]').forEach((b) => b.addEventListener('click', () => {
+    music.unlock();
     const coop = new CoopSession();
     coop.connect('', b.dataset.create as World).then(() => begin(coop)).catch(fail);
   }));
   lobby.querySelector('[data-join]')?.addEventListener('click', () => {
+    music.unlock();
     const code = (lobby.querySelector('[data-code]') as HTMLInputElement).value.trim().toUpperCase();
     if (code.length !== 4) { showLobby('El código tiene 4 letras.'); return; }
     const coop = new CoopSession();
     coop.connect(code, last?.code === code ? last.world : null).then(() => begin(coop)).catch(fail);
   });
-  lobby.querySelectorAll<HTMLButtonElement>('[data-solo]').forEach((b) => b.addEventListener('click', () => begin(new SoloSession(b.dataset.solo === 'new'))));
+  lobby.querySelectorAll<HTMLButtonElement>('[data-solo]').forEach((b) => b.addEventListener('click', () => { music.unlock(); void begin(new SoloSession(b.dataset.solo === 'new')); }));
 }
 
 // ============================== JUEGO ==============================
@@ -91,6 +101,7 @@ function toast(title: string, text: string): void {
 function onBlocked(door: Door): void {
   if (!door.gate || door.gate === 'hidden') return;
   engine.setPaused(true);
+  music.event('blocked');
   toast('Puerta cerrada', `Se abrirá al resolver «${roomName(door.gate)}».`);
 }
 
@@ -103,6 +114,7 @@ function panelCtx(): PanelCtx {
     isSolved: solved,
     solve: (id) => session.dispatch({ type: 'solve', id }),
     close: closePanel,
+    audio: (event) => music.event(event),
   };
 }
 
@@ -113,7 +125,31 @@ function openGuide(): void {
   overlay.querySelector('[data-close]')?.addEventListener('click', closePanel);
 }
 
+function openAudioSettings(): void {
+  if (!engine) return;
+  const settings = music.getSettings();
+  engine.setPaused(true);
+  overlay.hidden = false;
+  overlay.innerHTML = `<section class="puzzle crt-panel rp audio-settings" role="dialog" aria-modal="true">
+    <div class="puzzle__head"><h2>AUDIO // GENESIS</h2><button type="button" class="btn-retro" data-close>Cerrar (Esc)</button></div>
+    ${(['master', 'music', 'sfx', 'ambient'] as const).map((bus) => `<label class="audio-settings__row"><span>${bus === 'master' ? 'Volumen general' : bus === 'music' ? 'Música' : bus === 'sfx' ? 'Efectos' : 'Ambiente'}</span><input type="range" min="0" max="1" step="0.01" value="${settings[bus]}" data-audio-bus="${bus}"><output data-audio-value="${bus}">${Math.round(settings[bus] * 100)}%</output></label>`).join('')}
+    <label class="audio-settings__mute"><input type="checkbox" data-audio-mute ${settings.muted ? 'checked' : ''}> Silenciar todo</label>
+  </section>`;
+  overlay.querySelector('[data-close]')?.addEventListener('click', closePanel);
+  overlay.querySelectorAll<HTMLInputElement>('[data-audio-bus]').forEach((input) => input.addEventListener('input', () => {
+    const bus = input.dataset.audioBus as 'master' | 'music' | 'sfx' | 'ambient';
+    const value = Number(input.value);
+    music.setVolume(bus, value);
+    const output = overlay.querySelector<HTMLOutputElement>(`[data-audio-value="${bus}"]`);
+    if (output) output.value = `${Math.round(value * 100)}%`;
+  }));
+  overlay.querySelector<HTMLInputElement>('[data-audio-mute]')?.addEventListener('change', (event) => {
+    music.setMuted((event.target as HTMLInputElement).checked);
+  });
+}
+
 function closePanel(): void {
+  if (bossOpeningPlaying || (!session.state.ending && (bossVictoryShown || finalDecisionShown))) return;
   overlay.hidden = true;
   overlay.replaceChildren();
   refreshPanel = null;
@@ -125,12 +161,14 @@ function onInteract(id: string, thing?: Thing): void {
   const ctx = panelCtx();
   engine.setPaused(true);
   if (id === 'info') {
+    music.event('clue');
     if (thing?.info) toast(thing.info.title, thing.info.text); else engine.setPaused(false);
     return;
   }
-  if (id === 'switch') { engine.setPaused(false); switchWorld(); return; }
-  if (id === 'hidden-panel') { openHiddenPanel(ctx, () => session.dispatch({ type: 'reveal-comms' })); return; }
+  if (id === 'switch') { music.event('door'); engine.setPaused(false); switchWorld(); return; }
+  if (id === 'hidden-panel') { openHiddenPanel(ctx, () => { music.event('door'); session.dispatch({ type: 'reveal-comms' }); }); return; }
   if (id === 'clue') {
+    music.event('clue');
     const clue = clueFor(w, roomsOf(w)[engine.room], session.state.seed)!;
     overlay.hidden = false;
     overlay.innerHTML = `<section class="puzzle crt-panel rp clue-card"><div class="puzzle__head"><h2>${clue.title}</h2><button type="button" class="btn-retro" data-close>Cerrar (Esc)</button></div><p>${clue.body}</p>${clue.extra ?? ''}${clue.send && session.mode !== 'solo' ? `<p class="clue-send">Mándalo por la pared de luces así: <b>${clue.send}</b></p>` : ''}<p class="rp-small">${session.mode === 'solo' ? 'Recuérdala: la necesitarás al cambiar de mundo.' : 'El otro jugador no puede ver esto. Ve a la sala de comunicaciones y mándaselo.'}</p></section>`;
@@ -151,19 +189,32 @@ function onInteract(id: string, thing?: Thing): void {
 }
 
 function showDecision(): void {
-  const host = overlay.querySelector('.rp') as HTMLElement | null;
-  const box = host?.querySelector('[data-final]');
-  if (!box) return;
   if (session.state.fragments < 10) {
-    box.innerHTML = `<p class="rp-small bad">Lía está alineada, pero faltan ${10 - session.state.fragments} fragmentos. Ninguna dimensión contiene toda la verdad: ayudad al otro mundo.</p>`;
+    const box = overlay.querySelector('[data-final]');
+    if (box) box.innerHTML = `<p class="rp-small bad">Lía está alineada, pero faltan ${10 - session.state.fragments} fragmentos. Ninguna dimensión contiene toda la verdad: ayudad al otro mundo.</p>`;
     return;
   }
-  box.innerHTML = `
+  if (session.state.boss.phase !== 'defeated') {
+    if (!session.state.boss.active) session.dispatch({ type: 'boss-start' });
+    return;
+  }
+  openFinalDecision();
+}
+
+function openFinalDecision(): void {
+  if (finalDecisionShown || session.state.ending) return;
+  finalDecisionShown = true;
+  refreshPanel = null;
+  engine.setPaused(true);
+  overlay.hidden = false;
+  overlay.innerHTML = `<section class="puzzle crt-panel rp final-decision"><div class="puzzle__head"><h2>DECISIÓN FINAL // GENESIS</h2></div><div data-final>
     <h3>Decisión final sobre Genesis</h3>
     <p class="rp-small">Con los diez fragmentos ya sabéis la verdad: Sato autorizó al Alucinador y después intentó detenerlo. ¿Qué hacéis?</p>
     <button type="button" class="btn-terminal" data-end="lia">Restaurar a Lía con supervisión humana</button>
     <button type="button" class="btn-retro" data-end="new-genesis">Borrar a Lía y empezar un nuevo Genesis</button>
-    <button type="button" class="btn-retro" data-end="lost">Confiar en el Alucinador</button>`;
+    <button type="button" class="btn-retro" data-end="lost">Confiar en el Alucinador</button>
+  </div></section>`;
+  const box = overlay.querySelector<HTMLElement>('[data-final]')!;
   box.querySelectorAll<HTMLButtonElement>('[data-end]').forEach((b) => b.addEventListener('click', () => {
     session.dispatch({ type: 'ending', choice: b.dataset.end as Ending });
   }));
@@ -200,8 +251,11 @@ function switchWorld(): void {
 }
 
 function onRoomChanged(index: number): void {
-  if (session.mode === 'coop') session.dispatch({ type: 'pos', room: index });
-  const info = ROOM_INFO[session.world][index];
+  const inBossArena = session.state.boss?.active && engine.world === 'inverted' && session.world === 'real';
+  if (session.mode === 'coop' && !inBossArena) session.dispatch({ type: 'pos', room: index });
+  music.setWorld(session.world);
+  if (!inBossArena) music.event('door');
+  const info = inBossArena ? ROOM_INFO.inverted[6] : ROOM_INFO[session.world][index];
   banner.textContent = `${WORLD_NAME[session.world]} // ${index === 0 ? 'C-00' : info.short} · ${info.name.toUpperCase()}`;
   banner.classList.remove('room-banner--on');
   void banner.offsetWidth;
@@ -215,6 +269,18 @@ function objective(): string {
   const w = session.world;
   const other: World = w === 'real' ? 'inverted' : 'real';
   const here = roomsOf(w)[engine.room];
+  if (st.boss?.active) {
+    const arena = bossArenaPosition(st.boss.startedAt);
+    // Los aciertos solo cuentan en la parada actual (lastCycle), no en una vuelta anterior.
+    const thisStop = st.boss.lastCycle === arena.cycle;
+    const mineHit = thisStop && st.boss.hits[w] === arena.stop;
+    const otherHit = thisStop && st.boss.hits[other] === arena.stop;
+    if (!arena.vulnerable) return 'Persigue a la araña.';
+    if (mineHit && session.mode !== 'solo' && !otherHit && st.connected[other]) return 'Tu disparo acertó: falta el del otro mundo.';
+    if (mineHit) return '¡Impacto! Persigue la siguiente parada.';
+    return '¡Está quieta! ESPACIO para apuntar. Esquiva la telaraña.';
+  }
+  if (st.boss?.phase === 'defeated' && !st.ending) return 'La araña cayó. Elige el destino de Genesis.';
   const entry = w === 'real' ? 'Recepción' : 'la Puerta de transición';
   if (!st.commsRevealed[w]) {
     return here === roomsOf(w)[1]
@@ -246,8 +312,16 @@ function render(): void {
   if (!session || !engine) return;
   const st = session.state;
   const w = session.world;
+  music.unlock();
+  music.setWorld(w);
+  music.setAlert(st.alert);
+  if (st.alert > lastAlert) music.event('alert');
+  lastAlert = st.alert;
+  if (st.channelActive && !audioChannelActive) music.event('channel-open');
+  audioChannelActive = st.channelActive;
   const other: World = w === 'real' ? 'inverted' : 'real';
-  const info = ROOM_INFO[w][engine.room];
+  const inBossArena = st.boss?.active && engine.world === 'inverted' && w === 'real';
+  const info = inBossArena ? ROOM_INFO.inverted[6] : ROOM_INFO[w][engine.room];
   const peer = session.mode === 'solo'
     ? 'MODO INDIVIDUAL'
     : st.connected[other]
@@ -259,6 +333,7 @@ function render(): void {
     if (heard.has(sig.id)) continue;
     heard.add(sig.id);
     if (sig.to !== w || !heardReady) continue;
+    music.event('signal-receive');
     engine.wallMessage(sig.received);
     freshUntil = Date.now() + 12000;
     setTimeout(render, 12100);
@@ -268,11 +343,13 @@ function render(): void {
     <div class="hud__box ${w === 'inverted' ? 'hud__box--inv' : ''}">
       <div class="hud__header"><span class="hud__title">${WORLD_NAME[w]}</span><span class="hud__sync ${st.alert >= 75 ? 'hud__sync--crit' : ''}">ALERTA ${st.alert}%</span></div>
       <div class="hud__room">${info.short} · ${info.name.toUpperCase()}</div>
+      ${st.boss?.active ? `<div class="hud__row"><span>PATAS</span><strong>${st.boss.legs.filter(Boolean).length}/8</strong></div>
+      <div class="hud__row"><span>PARADA</span><strong data-boss-time>${st.boss.phase === 'fight' ? `${Math.ceil(bossArenaPosition(st.boss.startedAt).remaining / 1000)} s` : '—'}</strong></div>` : ''}
       <div class="hud__row"><span>PARTIDA</span><strong>${session.code}${'server' in session && session.server ? ` · srv ${session.server}` : ''}</strong></div>
       <div class="hud__row"><span>CANAL</span><strong class="${st.channelActive ? 'text-green' : 'text-red'}">${st.channelActive ? 'ACTIVO' : st.commsRevealed[w] ? 'SIN VERIFICAR' : 'OCULTO'}</strong></div>
       <div class="hud__row"><span class="${session.online ? '' : 'text-red'}">${'kicked' in session && session.kicked ? 'Esta partida se abrió en otra pestaña o PC. Usa esa.' : session.online ? peer : 'RECONECTANDO…'}</span></div>
       ${lastSignal && Date.now() < freshUntil ? `<div class="hud__signal">💡 La pared de luces se enciende: <b>${lastSignal.received}</b></div>` : ''}
-      <div class="hud__goal">▶ ${objective()}</div>
+      <div class="hud__goal" data-boss-goal>▶ ${objective()}</div>
     </div>`;
 
   document.querySelector('#fragment-count')!.textContent = `Fragmentos de contexto · ${st.fragments} de 10 recuperados`;
@@ -283,7 +360,7 @@ function render(): void {
   document.querySelector('#collectibles-label')!.textContent = lastSignal ? `Última señal recibida: ${lastSignal.received}` : 'Sin señales recibidas';
   document.querySelector('#minimap-grid')!.innerHTML = (['real', 'inverted'] as World[]).map((world) =>
     `<div class="mini-row ${world}">${ROOM_INFO[world].map((r, i) => {
-      const here = world === w && i === engine.room;
+      const here = inBossArena ? world === 'inverted' && i === 6 : world === w && i === engine.room;
       const peerHere = session.mode === 'coop' && world === other && st.positions[other] === i && st.connected[other];
       const hidden = i === 0 && !st.commsRevealed[world];
       return `<div class="minimap-cell ${here ? 'minimap-cell--current' : ''} ${st.solved.includes(r.id) ? 'minimap-cell--found' : ''} ${peerHere ? 'minimap-cell--peer' : ''}" title="${r.name}">${hidden ? '?' : r.short}</div>`;
@@ -292,28 +369,127 @@ function render(): void {
   if (st.ending) showEnding(st.ending);
   refreshPanel?.();
   maybePlayChannelOpening();
+  maybePlayBossFlow();
+}
+
+/** Mantiene el objetivo y el cronómetro del jefe vivos sin reconstruir todo el HUD. */
+function updateBossHudLive(): void {
+  if (!session || !engine || !session.state.boss?.active) return;
+  const boss = session.state.boss;
+  const arena = bossArenaPosition(boss.startedAt);
+  const time = hud.querySelector<HTMLElement>('[data-boss-time]');
+  if (time) time.textContent = arena.vulnerable ? `${Math.ceil(arena.remaining / 1000)} s` : 'camina';
+  const goal = hud.querySelector<HTMLElement>('[data-boss-goal]');
+  if (goal) goal.textContent = `▶ ${objective()}`;
+}
+
+/** Recuerda en este navegador que la escena del canal ya se vio en esta partida. */
+const channelSceneKey = (): string => `rescate-escena2-${session.code}`;
+function channelSceneDone(): boolean {
+  try { return localStorage.getItem(channelSceneKey()) === '1'; } catch { return false; }
 }
 
 function maybePlayChannelOpening(): void {
-  if (channelOpeningPlaying || session.state.channelOpeningSeen) return;
+  // No pisar la cinemática de inicio (comparten el overlay).
+  // Además de la marca del servidor se guarda una marca local: si el servidor pierde la marca
+  // (reinicio, deploy o una versión vieja del servidor), la escena no vuelve a salir en bucle.
+  if (engine.inIntro || channelOpeningPlaying || session.state.channelOpeningSeen || channelSceneDone()) return;
   const ready = session.mode === 'coop'
     ? session.state.channelActive
     : session.state.commsRevealed.real || session.state.commsRevealed.inverted;
   if (!ready) return;
 
   channelOpeningPlaying = true;
+  try { localStorage.setItem(channelSceneKey(), '1'); } catch { /* sin almacenamiento: queda la marca del servidor */ }
   refreshPanel = null;
   engine.setPaused(true);
   session.dispatch({ type: 'mark-channel-opening-seen' });
-  void playChannelOpening(overlay).then(() => {
+  void playChannelOpening(overlay, (line) => music.event(line.startsWith('ALUCINADOR') ? 'alucinador' : 'lia')).then(() => {
     channelOpeningPlaying = false;
     engine.setPaused(false);
     render();
   });
 }
 
+function maybePlayBossFlow(): void {
+  if (engine.inIntro) return;
+  const boss = session.state.boss;
+  // Si el último fragmento llega desde el otro mundo (o al recargar), la araña aparece sola:
+  // no hace falta volver a abrir la Sala 10.
+  if (boss.phase === 'idle' && session.state.fragments >= 10 && session.state.solved.includes('i10')) {
+    session.dispatch({ type: 'boss-start' });
+    return;
+  }
+  if (boss.active) {
+    // La escena previa se ve una sola vez por combate (antes se repetía en cada actualización).
+    if (bossOpeningPlaying || bossFightShown) return;
+    bossFightShown = true;
+    bossOpeningPlaying = true;
+    music.event('boss-start');
+    refreshPanel = null;
+    engine.setPaused(true);
+    // Los dos clientes dibujan la arena de i10, incluso si uno pertenece al Real.
+    if (session.world === 'real') engine.setWorld('inverted', 6);
+    else if (engine.world !== 'inverted' || engine.room !== 6) engine.setWorld('inverted', 6);
+    void playBossOpening(overlay, (line) => music.event(line.startsWith('ALUCINADOR') ? 'alucinador' : 'lia')).then(() => {
+      bossOpeningPlaying = false;
+      if (!session.state.boss.active) {
+        engine.setPaused(false);
+        render();
+        return;
+      }
+      engine.setPaused(false);
+      render();
+    });
+    return;
+  }
+  if (boss.phase === 'defeated' && !session.state.ending) {
+    if (bossVictoryShown || finalDecisionShown) {
+      // Ya se mostró la victoria o la decisión: no volver a limpiar el overlay en cada actualización.
+      if (bossVictoryShown && !finalDecisionShown) return;
+      openFinalDecision();
+      return;
+    }
+    refreshPanel = null;
+    overlay.hidden = true;
+    overlay.replaceChildren();
+    if (session.world === 'real' && engine.world !== 'real') {
+      engine.setWorld('real', session.state.positions.real ?? 1);
+    }
+    if (!bossVictoryShown) {
+      showBossVictory();
+      return;
+    }
+    openFinalDecision();
+  }
+}
+
+function showBossVictory(): void {
+  bossVictoryShown = true;
+  engine.setPaused(true);
+  overlay.hidden = false;
+  overlay.innerHTML = `<section class="puzzle crt-panel rp boss-victory" role="dialog" aria-modal="true">
+    <h2>RED CONTEXTUAL ROTA</h2>
+    <p>«Normalizar es quedarte con la intención, no con el ruido».</p>
+    <button type="button" class="btn-terminal" data-continue>Continuar</button>
+  </section>`;
+  const continueButton = overlay.querySelector('[data-continue]');
+  continueButton?.addEventListener('click', openFinalDecision, { once: true });
+  window.setTimeout(() => {
+    if (bossVictoryShown && !finalDecisionShown && !session.state.ending) openFinalDecision();
+  }, 2200);
+}
+
 async function begin(s: Session): Promise<void> {
   session = s;
+  shownEnding = null;
+  channelOpeningPlaying = false;
+  bossOpeningPlaying = false;
+  bossFightShown = false;
+  bossVictoryShown = false;
+  finalDecisionShown = false;
+  lastAlert = s.state.alert;
+  audioChannelActive = s.state.channelActive;
   lobby.hidden = true;
   document.body.dataset.world = s.world;
   const w = s.world;
@@ -329,6 +505,14 @@ async function begin(s: Session): Promise<void> {
     onRoomChanged,
     onBlocked,
     fragments: () => session.state.fragments,
+    bossActive: () => session.state.boss?.active ?? false,
+    bossState: () => session.state.boss,
+    bossWorld: () => session.world,
+    bossConnected: (world) => session.mode === 'solo' || session.state.connected[world],
+    onBossPosition: (x, y) => session.dispatch({ type: 'boss-pos', x, y }),
+    onBossFire: (fire) => { music.event('boss-fire'); session.dispatch({ type: 'boss-fire', ...fire }); },
+    onBossWebHit: () => { music.event('web-hit'); session.dispatch({ type: 'boss-web-hit' }); },
+    onBossFrame: updateBossHudLive,
     intro: () => (session.world === 'real' ? INTRO.real : INTRO.inverted),
     solo: s.mode === 'solo',
   });
@@ -340,9 +524,10 @@ async function begin(s: Session): Promise<void> {
   // El opening ocupa el overlay antes de habilitar las entradas del juego.
   // El motor no inicia su RAF hasta que la promesa de la cinemática termina.
   engine.setPaused(true);
-  await playOpening(overlay);
+  await playOpening(overlay, (line) => music.event(line.startsWith('ALUCINADOR') || line.startsWith('>') ? 'alucinador' : 'lia'));
   engine.skipIntro();
   engine.setPaused(false);
+  render(); // por si al entrar ya toca la escena del canal o el jefe
   bindControls();
   engine.start();
   let seenGuide = false;
@@ -359,7 +544,35 @@ async function begin(s: Session): Promise<void> {
 }
 
 let controlsBound = false;
+/**
+ * Botones de prueba. Solo aparecen con ?debug en la URL (p. ej. https://tu-app.fly.dev/?debug),
+ * así no salen en la presentación.
+ */
+function bindDebug(): void {
+  if (!new URLSearchParams(location.search).has('debug') || document.querySelector('.debug-bar')) return;
+  const bar = document.createElement('div');
+  bar.className = 'debug-bar';
+  bar.innerHTML = `<span>DEBUG</span>
+    <button type="button" class="btn-retro" data-debug="opening">Escena 1 (inicio)</button>
+    <button type="button" class="btn-retro" data-debug="channel">Escena 2 (canal)</button>
+    <button type="button" class="btn-retro" data-debug="boss">Ir al jefe final</button>`;
+  document.body.append(bar);
+  const play = (fn: (host: HTMLElement) => Promise<void>): void => {
+    if (!overlay.hidden) return;
+    engine.setPaused(true);
+    void fn(overlay).then(() => { engine.setPaused(false); render(); });
+  };
+  bar.querySelector('[data-debug="opening"]')?.addEventListener('click', () => play(playOpening));
+  bar.querySelector('[data-debug="channel"]')?.addEventListener('click', () => play(playChannelOpening));
+  bar.querySelector('[data-debug="boss"]')?.addEventListener('click', () => {
+    // Marca las 10 salas y el canal como resueltos (en cooperativo, para los dos) y arranca el jefe.
+    session.dispatch({ type: 'debug-boss' });
+    session.dispatch({ type: 'boss-start' });
+  });
+}
+
 function bindControls(): void {
+  bindDebug();
   if (controlsBound) return;
   controlsBound = true;
   const updateMusic = (on: boolean): void => {
@@ -377,6 +590,7 @@ function bindControls(): void {
     }
   });
   document.querySelector('#music-button')?.addEventListener('click', () => updateMusic(music.toggle()));
+  document.querySelector('#audio-settings-button')?.addEventListener('click', () => { if (!overlay.hidden) return; openAudioSettings(); });
   document.querySelector('#guide-button')?.addEventListener('click', () => { if (overlay.hidden) openGuide(); });
   document.querySelector('#fullscreen-button')?.addEventListener('click', () => {
     if (!document.fullscreenElement) void document.documentElement.requestFullscreen(); else void document.exitFullscreen();

@@ -1,11 +1,11 @@
 // Motor de cada mundo con el sistema de Proyecto 21: mapa de baldosas a 320 x 192, cámara que sigue a Sato,
 // objetos ordenados por la línea de los pies, oscuridad con huecos de luz y Sato de 16 x 16.
-import { ROOMS, type World } from '../shared/reducer.js';
+import { bossArenaPosition, bossTargetPair, type BossState, type BossVector, ROOMS, type World } from '../shared/reducer.js';
 import { satoFrames, type Facing } from '../p21/sato';
 import { SPRITES, drawMap } from '../p21/tiles';
 import { CH, CW, T, type Door, type Thing, type TileMap } from '../p21/tilemap';
 import { buildWorld } from './worlds';
-import { animateProp, propLight } from './scenery';
+import { animateProp, drawBossSpider, propLight } from './scenery';
 import type { Mood } from '../p21/tilemap';
 
 const VW = 320;
@@ -23,11 +23,23 @@ export interface TileHooks {
   onBlocked(door: Door): void;
   /** Fragmentos recuperados (para las ranuras del núcleo). */
   fragments(): number;
+  /** Indica si debe publicar la posición local durante el jefe final. */
+  bossActive?: () => boolean;
+  bossState?: () => BossState | null;
+  bossWorld?: () => World;
+  bossConnected?: (world: World) => boolean;
+  /** Publica la posición local con el límite de frecuencia del motor. */
+  onBossPosition?: (x: number, y: number) => void;
+  onBossFire?: (fire: { stop: number; raw: BossVector; unit: BossVector }) => void;
+  onBossWebHit?: () => void;
+  onBossFrame?: () => void;
   intro: () => string[];
   solo: boolean;
 }
 
 interface Light { x: number; y: number; inner: number; r: number; tint?: string }
+interface BossWeb { x: number; y: number; vx: number; vy: number; life: number; target: World }
+interface BossRay { raw: BossVector; unit: BossVector; stop: number; until: number }
 
 const MOTES = Array.from({ length: 14 }, (_, i) => ({
   x: (i * 97) % VW, y: (i * 53) % VH, speed: 3 + (i % 5), size: 0.5 + (i % 3) * 0.35, phase: i * 1.7,
@@ -61,6 +73,12 @@ export class TileEngine {
   wallMessage(text: string): void { this.wallMsg = { text, t0: this.time }; }
   private glitch = 0;
   private lastBlocked = -10;
+  private lastBossPosition = -10;
+  private bossAim: { stop: number; raw: BossVector; options: BossVector[] } | null = null;
+  private bossRay: BossRay | null = null;
+  private readonly bossWebs: BossWeb[] = [];
+  private nextBossWeb = 0;
+  private bossWebSlowUntil = 0;
   private openState = '';
 
   constructor(private readonly canvas: HTMLCanvasElement, world: World, private readonly hooks: TileHooks) {
@@ -169,6 +187,12 @@ export class TileEngine {
       const typing = (e.target as HTMLElement)?.tagName === 'INPUT';
       if (this.introOn && (k === ' ' || k === 'enter' || k === 'escape')) { e.preventDefault(); this.skipIntro(); return; }
       if (typing) return;
+      if (this.hooks.bossActive?.()) {
+        if (k === ' ') { e.preventDefault(); this.openBossAim(); return; }
+        if (this.bossAim && ['1', '2', '3', '4'].includes(k)) {
+          e.preventDefault(); this.fireBossOption(Number(k) - 1); return;
+        }
+      }
       if (map[k]) { e.preventDefault(); if (!this.paused) this.keys.add(map[k]); }
       if (k === 'e' && !e.repeat) this.interact();
     });
@@ -188,6 +212,7 @@ export class TileEngine {
       if (this.intro > 7.5) this.skipIntro();
     } else this.update(dt);
     this.draw();
+    this.hooks.onBossFrame?.();
     requestAnimationFrame((n) => this.frame(n));
   }
 
@@ -217,7 +242,8 @@ export class TileEngine {
     const p = this.player;
     let dx = 0;
     let dy = 0;
-    if (!this.paused) {
+    const webSlowed = this.hooks.bossActive?.() && this.time < this.bossWebSlowUntil;
+    if (!this.paused && !webSlowed) {
       if (this.keys.has('left')) dx -= 1;
       if (this.keys.has('right')) dx += 1;
       if (this.keys.has('up')) dy -= 1;
@@ -240,10 +266,87 @@ export class TileEngine {
       const index = ROOMS[this.world].indexOf(this.map.rooms[ri].id);
       if (index !== this.room) { this.room = index; this.hooks.onRoomChanged(index); }
     }
+    if (this.hooks.bossActive?.() && this.time - this.lastBossPosition >= 0.1) {
+      const room = this.map.rooms[ri];
+      if (room) {
+        this.lastBossPosition = this.time;
+        this.hooks.onBossPosition?.(p.x - room.c * CW * T, p.y - room.r * CH * T);
+      }
+    }
+    if (this.hooks.bossActive?.()) this.updateBossHazards(dt);
     const target = this.cameraTarget();
     const k = Math.min(1, dt * 6);
     this.camX += (target.x - this.camX) * k;
     this.camY += (target.y - this.camY) * k;
+  }
+
+  private openBossAim(): void {
+    const boss = this.hooks.bossState?.();
+    if (!boss?.active || !boss.startedAt) return;
+    const arena = bossArenaPosition(boss.startedAt);
+    if (!arena.vulnerable) return;
+    const world = this.hooks.bossWorld?.() ?? this.world;
+    const position = boss.positions[world];
+    const raw = {
+      x: Math.round((arena.x - position.x) / 16),
+      y: Math.round((arena.y - position.y) / 16),
+    };
+    if (raw.x === 0 && raw.y === 0) return;
+    const length = Math.hypot(raw.x, raw.y);
+    const unit = { x: raw.x / length, y: raw.y / length };
+    this.bossAim = {
+      stop: arena.stop,
+      raw,
+      // Orden al azar: la correcta no puede estar siempre en el 1.
+      options: [unit, { x: raw.x, y: raw.y }, { x: -unit.x, y: -unit.y }, { x: unit.x / 2, y: unit.y / 2 }]
+        .map((v) => ({ v, k: Math.random() }))
+        .sort((a, b) => a.k - b.k)
+        .map(({ v }) => v),
+    };
+  }
+
+  private fireBossOption(index: number): void {
+    const aim = this.bossAim;
+    if (!aim || !aim.options[index]) return;
+    const unit = aim.options[index];
+    this.bossRay = { raw: aim.raw, unit, stop: aim.stop, until: this.time + 0.45 };
+    this.bossAim = null;
+    this.hooks.onBossFire?.({ stop: aim.stop, raw: aim.raw, unit });
+  }
+
+  private updateBossHazards(dt: number): void {
+    const boss = this.hooks.bossState?.();
+    if (!boss?.active || !boss.startedAt) return;
+    const arena = bossArenaPosition(boss.startedAt);
+    const currentWorld = this.hooks.bossWorld?.() ?? this.world;
+    if (!arena.vulnerable && this.time >= this.nextBossWeb) {
+      this.nextBossWeb = this.time + 1.8;
+      const realDistance = Math.hypot(boss.positions.real.x - arena.x, boss.positions.real.y - arena.y);
+      const invertedDistance = Math.hypot(boss.positions.inverted.x - arena.x, boss.positions.inverted.y - arena.y);
+      const targetWorld = realDistance <= invertedDistance ? 'real' : 'inverted';
+      const target = boss.positions[targetWorld];
+      const dx = target.x - arena.x;
+      const dy = target.y - arena.y;
+      const length = Math.max(1, Math.hypot(dx, dy));
+      this.bossWebs.push({ x: arena.x, y: arena.y, vx: dx / length * 24, vy: dy / length * 24, life: 4, target: targetWorld });
+    }
+    const world = this.hooks.bossWorld?.() ?? this.world;
+    const target = boss.positions[world];
+    for (let i = this.bossWebs.length - 1; i >= 0; i--) {
+      const web = this.bossWebs[i];
+      web.x += web.vx * dt;
+      web.y += web.vy * dt;
+      web.life -= dt;
+      if (web.life <= 0 || web.x < 12 || web.x > 276 || web.y < 12 || web.y > 180) {
+        this.bossWebs.splice(i, 1);
+        continue;
+      }
+      if (web.target === currentWorld && Math.hypot(web.x - target.x, web.y - target.y) < 7) {
+        this.bossWebSlowUntil = this.time + 2;
+        this.hooks.onBossWebHit?.();
+        this.bossWebs.splice(i, 1);
+      }
+    }
   }
 
   private blocked(door: Door): void {
@@ -342,6 +445,7 @@ export class TileEngine {
     this.drawLight(cx, cy, visible);
     this.drawMotes(ox / this.scaleX, oy / this.scaleY);
     if (!this.introOn) { this.drawBeacons(cx, cy); this.drawPrompt(cx, cy); }
+    this.drawBossArena(cx, cy);
     o.setTransform(1, 0, 0, 1, 0, 0);
     this.drawFx();
     if (this.introOn) this.drawIntro();
@@ -525,6 +629,94 @@ export class TileEngine {
         o.fillRect(0, Math.floor(Math.random() * h), w, (2 + Math.floor(Math.random() * 6)) * this.scaleY / 2);
       }
     }
+  }
+
+  private drawBossArena(cx: number, cy: number): void {
+    const boss = this.hooks.bossState?.();
+    if (!boss?.active || !boss.startedAt) return;
+    const arenaRoom = this.map.rooms.find((room) => room.id === 'i10');
+    if (!arenaRoom) return;
+    const arena = bossArenaPosition(boss.startedAt);
+    const ox = arenaRoom.c * CW * T;
+    const oy = arenaRoom.r * CH * T;
+    const o = this.out;
+    o.save();
+    o.setTransform(this.scaleX, 0, 0, this.scaleY, -cx * this.scaleX, -cy * this.scaleY);
+    const spiderX = ox + arena.x;
+    const spiderY = oy + arena.y;
+    const thisStop = boss.lastCycle === arena.cycle;
+    const wounded = [
+      thisStop && boss.wounded.real && boss.hits.real === arena.stop,
+      thisStop && boss.wounded.inverted && boss.hits.inverted === arena.stop,
+    ];
+    drawBossSpider(o, boss.legs, arena.vulnerable ? bossTargetPair(boss.legs, arena.stop) : -1, this.time, spiderX - 24, spiderY - 16, false, wounded);
+
+    const world = this.hooks.bossWorld?.() ?? this.world;
+    const other: World = world === 'real' ? 'inverted' : 'real';
+    const echo = boss.positions[other];
+    const echoX = ox + echo.x;
+    const echoY = oy + echo.y;
+    const frame = SATO.down[0];
+    const connected = this.hooks.bossConnected?.(other) ?? false;
+    // En modo 1 persona no hay otro jugador: no se dibuja eco.
+    if (!this.hooks.solo) {
+      // Tinte solo sobre la silueta (en un lienzo aparte), no sobre el suelo de alrededor.
+      const tint = document.createElement('canvas');
+      tint.width = 16;
+      tint.height = 16;
+      const tg = tint.getContext('2d')!;
+      tg.drawImage(frame, 0, 0);
+      tg.globalCompositeOperation = 'source-atop';
+      tg.fillStyle = other === 'real' ? 'rgba(247,147,26,.6)' : 'rgba(164,108,255,.6)';
+      tg.fillRect(0, 0, 16, 16);
+      o.save();
+      o.globalAlpha = connected ? 0.6 : 0.15;
+      o.drawImage(tint, echoX - 8, echoY - 16);
+      o.restore();
+    }
+
+    for (const web of this.bossWebs) {
+      o.strokeStyle = 'rgba(255,23,68,.8)';
+      o.lineWidth = 1;
+      o.beginPath();
+      o.moveTo(ox + web.x, oy + web.y);
+      o.lineTo(ox + web.x - web.vx * 0.18, oy + web.y - web.vy * 0.18);
+      o.stroke();
+    }
+    if (this.bossRay && this.bossRay.until > this.time) {
+      const rayLength = Math.hypot(this.bossRay.raw.x, this.bossRay.raw.y) * Math.hypot(this.bossRay.unit.x, this.bossRay.unit.y) * 16;
+      o.strokeStyle = '#00e5ff';
+      o.lineWidth = 1.5;
+      o.beginPath();
+      o.moveTo(this.player.x, this.player.y - 8);
+      o.lineTo(this.player.x + this.bossRay.unit.x * rayLength, this.player.y - 8 + this.bossRay.unit.y * rayLength);
+      o.stroke();
+    }
+    if (arena.vulnerable && !this.bossAim && (!this.bossRay || this.bossRay.until <= this.time)) {
+      const position = boss.positions[world];
+      const raw = { x: Math.round((arena.x - position.x) / 16), y: Math.round((arena.y - position.y) / 16) };
+      o.fillStyle = '#ffe9b0';
+      o.font = '7px monospace';
+      o.textAlign = 'center';
+      o.fillText(`v = (${raw.x}, ${raw.y})`, this.player.x, this.player.y - 23);
+    }
+    if (this.bossAim) {
+      const baseX = ox + 14;
+      const baseY = oy + 142;
+      o.fillStyle = 'rgba(5,4,10,.9)';
+      o.fillRect(baseX, baseY, 260, 38);
+      o.strokeStyle = '#00e5ff';
+      o.strokeRect(baseX, baseY, 260, 38);
+      o.font = '7px monospace';
+      o.textAlign = 'left';
+      o.fillStyle = '#ece3d6';
+      o.fillText(`v = (${this.bossAim.raw.x}, ${this.bossAim.raw.y})  Elige 1-4`, baseX + 5, baseY + 9);
+      this.bossAim.options.forEach((option, index) => {
+        o.fillStyle = '#ffb454';
+        o.fillText(`${index + 1}: (${option.x.toFixed(2)}, ${option.y.toFixed(2)})`, baseX + 5 + (index % 2) * 128, baseY + 20 + Math.floor(index / 2) * 10);
+      });
+    }
+    o.restore();
   }
 
   private drawIntro(): void {

@@ -1,4 +1,4 @@
-import { createState, publicState, reduce, type Action, type PublicState, type World } from '../shared/reducer.js';
+import { CLOCK, createState, publicState, reduce, type Action, type PublicState, type World } from '../shared/reducer.js';
 
 export type Mode = 'coop' | 'solo';
 
@@ -19,6 +19,14 @@ const SOLO_KEY = 'rescate-solo-v1';
 const COOP_KEY = 'rescate-coop-v1';
 const STATE_KEY = 'rescate-coop-state-';
 
+function migrateState(raw: ReturnType<typeof createState>, mode: 'coop' | 'solo'): ReturnType<typeof createState> {
+  raw.mode = mode;
+  if (!raw.channelOpeningSeen) raw.channelOpeningSeen = false;
+  if (!raw.boss || !Number.isFinite(raw.boss.startedAt) || raw.boss.legs?.length !== 8
+    || !raw.boss.hits || !raw.boss.wounded || !raw.boss.fired || !raw.boss.webHitAt) raw.boss = createState(0, mode).boss;
+  return raw;
+}
+
 function savedState(code: string): PublicState | undefined {
   try { return JSON.parse(localStorage.getItem(`${STATE_KEY}${code.toUpperCase()}`) ?? 'null') ?? undefined; } catch { return undefined; }
 }
@@ -34,7 +42,7 @@ export class SoloSession extends Emitter implements Session {
   code = 'SOLO';
   online = true;
   world: World = 'real';
-  private raw = createState();
+  private raw = createState(undefined, 'solo');
   state: PublicState = publicState(this.raw);
 
   constructor(fresh: boolean) {
@@ -42,7 +50,7 @@ export class SoloSession extends Emitter implements Session {
     if (!fresh) {
       try {
         const saved = JSON.parse(localStorage.getItem(SOLO_KEY) ?? 'null');
-        if (saved?.raw?.solved) { this.raw = saved.raw; this.world = saved.world ?? 'real'; }
+        if (saved?.raw?.solved) { this.raw = migrateState(saved.raw, 'solo'); this.world = saved.world ?? 'real'; }
       } catch { /* sin guardado */ }
     }
     this.raw.connected = { real: true, inverted: true };
@@ -110,10 +118,13 @@ export class CoopSession extends Emitter implements Session {
             this.server = msg.server ?? '';
             this.online = true;
             this.ready = true;
-            try { localStorage.setItem(COOP_KEY, JSON.stringify({ code: this.code, world: this.world, token: this.token })); } catch { /* ignorar */ }
+            // La ficha va por pestaña (sessionStorage): así dos pestañas del mismo navegador pueden ser los dos jugadores.
+            try { sessionStorage.setItem(COOP_KEY, JSON.stringify({ code: this.code, world: this.world, token: this.token })); } catch { /* ignorar */ }
+            try { localStorage.setItem(COOP_KEY, JSON.stringify({ code: this.code, world: this.world })); } catch { /* ignorar */ }
             if (!settled) { settled = true; resolve(); }
           } else if (msg.type === 'state') {
-            this.state = msg.state;
+            if (Number.isFinite(msg.now)) CLOCK.offset = msg.now - Date.now();
+            this.state = publicState(migrateState(msg.state, 'coop'));
             // Copia local de la partida (mensajes incluidos) para recargar la página o si el servidor se reinicia.
             try { localStorage.setItem(`${STATE_KEY}${this.code}`, JSON.stringify(msg.state)); } catch { /* ignorar */ }
             this.emit();
@@ -144,7 +155,9 @@ export class CoopSession extends Emitter implements Session {
 }
 
 export function lastCoop(): { code: string; world: World; token?: string } | null {
-  try { return JSON.parse(localStorage.getItem(COOP_KEY) ?? 'null'); } catch { return null; }
+  try {
+    return JSON.parse(sessionStorage.getItem(COOP_KEY) ?? 'null') ?? JSON.parse(localStorage.getItem(COOP_KEY) ?? 'null');
+  } catch { return null; }
 }
 
 export function hasSoloSave(): boolean {

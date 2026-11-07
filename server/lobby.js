@@ -1,6 +1,6 @@
 // Partidas multijugador por WebSocket: un jugador por mundo y estado compartido en el servidor.
 import { WebSocketServer } from 'ws';
-import { createState, publicState, reduce, WORLDS } from '../src/shared/reducer.js';
+import { BOSS_ROUNDS, createState, publicState, reduce, WORLDS } from '../src/shared/reducer.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const sessions = new Map();
@@ -16,7 +16,8 @@ function newCode() {
 }
 
 function broadcast(session) {
-  const payload = JSON.stringify({ type: 'state', state: publicState(session.state) });
+  // `now` permite a los clientes sincronizar su reloj con el del servidor (posición de la araña).
+  const payload = JSON.stringify({ type: 'state', state: publicState(session.state), now: Date.now() });
   for (const world of WORLDS) {
     const socket = session.sockets[world];
     if (socket && socket.readyState === socket.OPEN) socket.send(payload);
@@ -37,6 +38,37 @@ function restore(code, snap) {
   if (Array.isArray(snap.signals)) state.signals = snap.signals.slice(-60).filter((x) => x && typeof x.id === 'string');
   if (['lia', 'new-genesis', 'lost'].includes(snap.ending)) state.ending = snap.ending;
   if (Number.isFinite(snap.alert)) state.alert = Math.max(5, Math.min(95, snap.alert));
+  // Sin esto, tras un reinicio la escena del canal se volvía a reproducir.
+  state.channelOpeningSeen = Boolean(snap.channelOpeningSeen);
+  if (snap.boss && typeof snap.boss === 'object' && Number.isFinite(snap.boss.startedAt)
+    && Array.isArray(snap.boss.legs) && snap.boss.legs.length === 8
+    && snap.boss.hits && snap.boss.wounded) {
+    const b = snap.boss;
+    const phase = ['idle', 'fight', 'defeated'].includes(b.phase) ? b.phase : 'idle';
+    const stop = (value) => Number.isInteger(value) && value >= 0 && value < BOSS_ROUNDS ? value : null;
+    const cycle = (value) => Number.isInteger(value) && value >= 0 ? value : null;
+    const point = (p, fallback) => Number.isFinite(p?.x) && Number.isFinite(p?.y)
+      ? { x: Math.max(16, Math.min(272, p.x)), y: Math.max(16, Math.min(176, p.y)), at: Number.isFinite(p.at) ? p.at : 0 }
+      : fallback;
+    state.boss = {
+      ...state.boss,
+      active: Boolean(b.active) && phase === 'fight',
+      phase,
+      legs: b.legs.map(Boolean),
+      startedAt: b.startedAt,
+      hits: { real: stop(b.hits.real), inverted: stop(b.hits.inverted) },
+      wounded: { real: Boolean(b.wounded.real), inverted: Boolean(b.wounded.inverted) },
+      fired: { real: cycle(b.fired?.real), inverted: cycle(b.fired?.inverted) },
+      lastCycle: cycle(b.lastCycle),
+      failures: Number.isInteger(b.failures) && b.failures >= 0 ? b.failures : 0,
+      hintLevel: Number.isInteger(b.hintLevel) ? Math.max(0, Math.min(3, b.hintLevel)) : 0,
+      webHitAt: { real: Number.isFinite(b.webHitAt?.real) ? b.webHitAt.real : 0, inverted: Number.isFinite(b.webHitAt?.inverted) ? b.webHitAt.inverted : 0 },
+      positions: {
+        real: point(b.positions?.real, state.boss.positions.real),
+        inverted: point(b.positions?.inverted, state.boss.positions.inverted),
+      },
+    };
+  }
   const session = { code, state, sockets: { real: null, inverted: null }, tokens: { real: null, inverted: null }, emptySince: 0 };
   sessions.set(code, session);
   return session;

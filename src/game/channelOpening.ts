@@ -89,7 +89,7 @@ function markup(): string {
 }
 
 /** Reproduce la confirmación del canal y resuelve al terminar o al omitirla. */
-export async function playChannelOpening(host: HTMLElement): Promise<void> {
+export async function playChannelOpening(host: HTMLElement, onLine?: (line: string) => void): Promise<void> {
   host.hidden = false;
   host.setAttribute('aria-busy', 'true');
   host.innerHTML = markup();
@@ -138,6 +138,7 @@ export async function playChannelOpening(host: HTMLElement): Promise<void> {
       const shotStarted = performance.now();
       for (const shotLine of shot.lines) {
         if (finished) return;
+        onLine?.(shotLine);
         await typeLine(line, shotLine, controller.signal);
         await wait(Math.max(250, lineDuration - shotLine.length * TYPEWRITER_MS));
       }

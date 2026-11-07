@@ -121,7 +121,7 @@ function openingMarkup(): string {
  * Reproduce el opening y resuelve al terminar o al pulsar omitir.
  * La promesa evita que el game loop pueda reanudarse antes de tiempo.
  */
-export async function playOpening(host: HTMLElement): Promise<void> {
+export async function playOpening(host: HTMLElement, onLine?: (line: string) => void): Promise<void> {
   host.hidden = false;
   host.setAttribute('aria-busy', 'true');
   host.innerHTML = openingMarkup();
@@ -183,6 +183,7 @@ export async function playOpening(host: HTMLElement): Promise<void> {
       const shotStarted = performance.now();
       for (const shotLine of shot.lines) {
         if (finished) return;
+        onLine?.(shotLine);
         await typeLine(line, shotLine, controller.signal);
         await wait(Math.max(350, lineDuration - shotLine.length * TYPEWRITER_MS));
       }

@@ -21,6 +21,7 @@ export function openHiddenPanel(ctx: PanelCtx, reveal: () => void): void {
   let input: number[] = [];
   let playing = false;
   const flash = (i: number, ms = 380): Promise<void> => new Promise((res) => {
+    ctx.audio?.('signal-receive');
     lamps[i].classList.add('lamp--on');
     setTimeout(() => { lamps[i].classList.remove('lamp--on'); setTimeout(res, 140); }, ms);
   });
@@ -40,11 +41,13 @@ export function openHiddenPanel(ctx: PanelCtx, reveal: () => void): void {
     input.push(i);
     const k = input.length - 1;
     if (input[k] !== pattern[k]) {
+      ctx.audio?.('error');
       say(root, 'El panel chisporrotea y reinicia la secuencia. Vuelve a mirar el patrón.');
       input = [];
       return;
     }
     if (input.length === pattern.length) {
+      ctx.audio?.('solve');
       say(root, '✔ Un mecanismo cede: la pared falsa se desliza. Has encontrado el cuarto de comunicaciones (a la izquierda).', true);
       reveal();
     }
@@ -109,10 +112,11 @@ export function openComms(ctx: PanelCtx): () => void {
   const msgIn = $(root, '[data-msg]');
   const bulb = (ch: string): HTMLElement | null => wall.querySelector(`[data-ch="${ch}"]`);
   let queue: Promise<void> = Promise.resolve();
-  const play = (text: string): void => {
+  const play = (text: string, audioEvent: 'signal-send' | 'signal-receive' = 'signal-receive'): void => {
     queue = queue.then(async () => {
       for (const ch of text) {
         if (!root.isConnected) return;
+        ctx.audio?.(audioEvent);
         const b = ch === ' ' || ch === '?' ? null : bulb(ch);
         if (ch === '?') wall.classList.add('wall--glitch');
         b?.classList.add('wbulb--on');
@@ -151,7 +155,7 @@ export function openComms(ctx: PanelCtx): () => void {
     for (const sig of s.state.signals) {
       if (sig.to !== me || played.has(sig.id)) continue;
       played.add(sig.id);
-      play(sig.received);
+      play(sig.received, 'signal-receive');
     }
     const st = s.state;
     const open = st.channelActive && !solo;
@@ -169,7 +173,7 @@ export function openComms(ctx: PanelCtx): () => void {
     const message = sanitizeMessage(text);
     if (!message) { say(root, 'Pulsa algunas bombillas o escribe un mensaje.'); return; }
     s.dispatch({ type: 'signal', message, encoding: rep ? 'rep3' : 'none' });
-    play(message);
+    play(message, 'signal-send');
     say(root, solo ? 'Mensaje guardado. Cambia de mundo para leerlo.' : 'Mensaje enviado. En el otro mundo se encienden sus luces.');
   };
   const sendTyped = (): void => { send(msgIn.value, $(root, '[data-rep]').checked); msgIn.value = ''; };
